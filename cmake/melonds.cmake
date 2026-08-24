@@ -211,38 +211,6 @@ if(EXISTS "${MELONDS_ARMJIT_MEMORY_CPP}")
     endif()
 endif()
 
-# melonDS was only ever built with GCC/Clang upstream (its own Windows
-# builds go through MinGW, never MSVC), so it freely uses GCC/Clang
-# builtins MSVC doesn't define at all: __builtin_ctzll/__builtin_clzll
-# (NonStupidBitfield.h) and __builtin_popcount
-# (ARMInterpreter_LoadStore.cpp). Map them to MSVC's <intrin.h>
-# equivalents right after each file's include guard — a macro
-# substitution here covers every call site in the file without
-# touching each one individually.
-set(MELONDS_BITFIELD_H "${melonds_SOURCE_DIR}/src/NonStupidBitfield.h")
-if(EXISTS "${MELONDS_BITFIELD_H}")
-    file(READ "${MELONDS_BITFIELD_H}" MELONDS_BITFIELD_CONTENTS)
-    if(NOT MELONDS_BITFIELD_CONTENTS MATCHES "MSVC builtin compat")
-        string(REPLACE
-            "#ifndef NONSTUPIDBITFIELD_H\n#define NONSTUPIDBITFIELD_H"
-            "#ifndef NONSTUPIDBITFIELD_H\n#define NONSTUPIDBITFIELD_H\n\n// MSVC builtin compat: MSVC has no __builtin_ctzll/__builtin_clzll,\n// only the <intrin.h> bit-scan intrinsics.\n#ifdef _MSC_VER\n#include <intrin.h>\nstatic inline int melonds_msvc_ctzll(unsigned long long x) { unsigned long i; _BitScanForward64(&i, x); return (int)i; }\nstatic inline int melonds_msvc_clzll(unsigned long long x) { unsigned long i; _BitScanReverse64(&i, x); return 63 - (int)i; }\n#define __builtin_ctzll melonds_msvc_ctzll\n#define __builtin_clzll melonds_msvc_clzll\n#endif"
-            MELONDS_BITFIELD_CONTENTS "${MELONDS_BITFIELD_CONTENTS}")
-        file(WRITE "${MELONDS_BITFIELD_H}" "${MELONDS_BITFIELD_CONTENTS}")
-    endif()
-endif()
-
-set(MELONDS_LOADSTORE_CPP "${melonds_SOURCE_DIR}/src/ARMInterpreter_LoadStore.cpp")
-if(EXISTS "${MELONDS_LOADSTORE_CPP}")
-    file(READ "${MELONDS_LOADSTORE_CPP}" MELONDS_LOADSTORE_CONTENTS)
-    if(NOT MELONDS_LOADSTORE_CONTENTS MATCHES "MSVC builtin compat")
-        string(REPLACE
-            "#include <stdio.h>\n#include \"ARM.h\""
-            "#include <stdio.h>\n#include \"ARM.h\"\n\n// MSVC builtin compat: see NonStupidBitfield.h.\n#ifdef _MSC_VER\n#include <intrin.h>\n#define __builtin_popcount __popcnt\n#endif"
-            MELONDS_LOADSTORE_CONTENTS "${MELONDS_LOADSTORE_CONTENTS}")
-        file(WRITE "${MELONDS_LOADSTORE_CPP}" "${MELONDS_LOADSTORE_CONTENTS}")
-    endif()
-endif()
-
 # The JIT backend selector only recognizes GCC/Clang's __x86_64__,
 # never MSVC's own _M_X64 — meaning it never selects a backend at all
 # on MSVC and fails with "the current target platform doesn't have a
@@ -414,6 +382,32 @@ target_include_directories(melonds_core PUBLIC
     "${melonds_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_BINARY_DIR}/melonds_generated"
 )
+
+# melonDS was only ever built with GCC/Clang upstream (its own Windows
+# builds go through MinGW, never MSVC), so its source leans on GNU
+# extensions MSVC doesn't understand at all: __attribute__((...))
+# (TinyVector.h and others) and builtins like __builtin_ctzll/
+# __builtin_clzll/__builtin_popcount (NonStupidBitfield.h,
+# ARMInterpreter_LoadStore.cpp, and potentially others not yet hit by
+# a compile). Rather than chasing each individual file/call site as
+# MSVC trips over it, force-include one small compat header into
+# every translation unit in this target so all of them are covered up
+# front, including any not yet discovered.
+if(MSVC)
+    set(MELONDS_MSVC_COMPAT_H "${CMAKE_CURRENT_BINARY_DIR}/melonds_generated/melonds_msvc_compat.h")
+    file(WRITE "${MELONDS_MSVC_COMPAT_H}" "#pragma once\n\
+#include <intrin.h>\n\
+#ifndef __attribute__\n\
+#define __attribute__(x)\n\
+#endif\n\
+static inline int melonds_msvc_ctzll(unsigned long long x) { unsigned long i; _BitScanForward64(&i, x); return (int)i; }\n\
+static inline int melonds_msvc_clzll(unsigned long long x) { unsigned long i; _BitScanReverse64(&i, x); return 63 - (int)i; }\n\
+#define __builtin_ctzll melonds_msvc_ctzll\n\
+#define __builtin_clzll melonds_msvc_clzll\n\
+#define __builtin_popcount __popcnt\n\
+")
+    target_compile_options(melonds_core PRIVATE "/FI${MELONDS_MSVC_COMPAT_H}")
+endif()
 
 # Wipe whatever directory-scope compile definitions this target
 # inherited from Azahar's top-level CMakeLists.txt (ENABLE_QT,
