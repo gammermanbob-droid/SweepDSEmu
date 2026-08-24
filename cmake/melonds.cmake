@@ -211,6 +211,55 @@ if(EXISTS "${MELONDS_ARMJIT_MEMORY_CPP}")
     endif()
 endif()
 
+# melonDS was only ever built with GCC/Clang upstream (its own Windows
+# builds go through MinGW, never MSVC), so it freely uses GCC/Clang
+# builtins MSVC doesn't define at all: __builtin_ctzll/__builtin_clzll
+# (NonStupidBitfield.h) and __builtin_popcount
+# (ARMInterpreter_LoadStore.cpp). Map them to MSVC's <intrin.h>
+# equivalents right after each file's include guard — a macro
+# substitution here covers every call site in the file without
+# touching each one individually.
+set(MELONDS_BITFIELD_H "${melonds_SOURCE_DIR}/src/NonStupidBitfield.h")
+if(EXISTS "${MELONDS_BITFIELD_H}")
+    file(READ "${MELONDS_BITFIELD_H}" MELONDS_BITFIELD_CONTENTS)
+    if(NOT MELONDS_BITFIELD_CONTENTS MATCHES "MSVC builtin compat")
+        string(REPLACE
+            "#ifndef NONSTUPIDBITFIELD_H\n#define NONSTUPIDBITFIELD_H"
+            "#ifndef NONSTUPIDBITFIELD_H\n#define NONSTUPIDBITFIELD_H\n\n// MSVC builtin compat: MSVC has no __builtin_ctzll/__builtin_clzll,\n// only the <intrin.h> bit-scan intrinsics.\n#ifdef _MSC_VER\n#include <intrin.h>\nstatic inline int melonds_msvc_ctzll(unsigned long long x) { unsigned long i; _BitScanForward64(&i, x); return (int)i; }\nstatic inline int melonds_msvc_clzll(unsigned long long x) { unsigned long i; _BitScanReverse64(&i, x); return 63 - (int)i; }\n#define __builtin_ctzll melonds_msvc_ctzll\n#define __builtin_clzll melonds_msvc_clzll\n#endif"
+            MELONDS_BITFIELD_CONTENTS "${MELONDS_BITFIELD_CONTENTS}")
+        file(WRITE "${MELONDS_BITFIELD_H}" "${MELONDS_BITFIELD_CONTENTS}")
+    endif()
+endif()
+
+set(MELONDS_LOADSTORE_CPP "${melonds_SOURCE_DIR}/src/ARMInterpreter_LoadStore.cpp")
+if(EXISTS "${MELONDS_LOADSTORE_CPP}")
+    file(READ "${MELONDS_LOADSTORE_CPP}" MELONDS_LOADSTORE_CONTENTS)
+    if(NOT MELONDS_LOADSTORE_CONTENTS MATCHES "MSVC builtin compat")
+        string(REPLACE
+            "#include <stdio.h>\n#include \"ARM.h\""
+            "#include <stdio.h>\n#include \"ARM.h\"\n\n// MSVC builtin compat: see NonStupidBitfield.h.\n#ifdef _MSC_VER\n#include <intrin.h>\n#define __builtin_popcount __popcnt\n#endif"
+            MELONDS_LOADSTORE_CONTENTS "${MELONDS_LOADSTORE_CONTENTS}")
+        file(WRITE "${MELONDS_LOADSTORE_CPP}" "${MELONDS_LOADSTORE_CONTENTS}")
+    endif()
+endif()
+
+# The JIT backend selector only recognizes GCC/Clang's __x86_64__,
+# never MSVC's own _M_X64 — meaning it never selects a backend at all
+# on MSVC and fails with "the current target platform doesn't have a
+# JIT backend" despite xbyak (melonDS's x64 JIT backend) itself
+# supporting MSVC just fine.
+set(MELONDS_JIT_COMPILER_H "${melonds_SOURCE_DIR}/src/ARMJIT_Compiler.h")
+if(EXISTS "${MELONDS_JIT_COMPILER_H}")
+    file(READ "${MELONDS_JIT_COMPILER_H}" MELONDS_JIT_COMPILER_CONTENTS)
+    if(NOT MELONDS_JIT_COMPILER_CONTENTS MATCHES "_M_X64")
+        string(REPLACE
+            "#if defined(__x86_64__)"
+            "#if defined(__x86_64__) || defined(_M_X64)"
+            MELONDS_JIT_COMPILER_CONTENTS "${MELONDS_JIT_COMPILER_CONTENTS}")
+        file(WRITE "${MELONDS_JIT_COMPILER_H}" "${MELONDS_JIT_COMPILER_CONTENTS}")
+    endif()
+endif()
+
 # melonDS's own CMakeLists builds a monolithic `melonDS` target that
 # includes the Qt frontend. Build our own restricted target instead.
 #
