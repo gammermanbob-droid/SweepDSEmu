@@ -1,0 +1,177 @@
+SweepDSEmu — Startup Guide
+===========================
+
+SweepDSEmu is a fork of Azahar (3DS emulator) with an integrated melonDS
+core, letting DS/DSi titles run alongside 3DS titles — including as real
+installable forwarder CIAs that appear as normal icons on the emulated
+3DS HOME Menu and boot straight into the DS game.
+
+This guide covers two ways to run it:
+  1. macOS   — build from source and run natively.
+  2. Windows — either download the CI-built .exe, or build it yourself
+               on Windows, then run it under Wine (or natively on
+               Windows/in a VM).
+
+If anything below doesn't match what you see, check the repo's own
+.ci/ folder (.ci/macos.sh, .ci/windows.sh) — that's the exact script
+GitHub Actions runs, kept in sync with the real build.
+
+
+===========================================================
+1. macOS — BUILD FROM SOURCE
+===========================================================
+
+Prerequisites
+-------------
+- Xcode Command Line Tools
+- Homebrew
+- CMake, Ninja, Qt6, Boost, SDL2, and the other deps Azahar needs
+
+Commands
+--------
+  # 1. Install Xcode Command Line Tools (skip if already installed)
+  xcode-select --install
+
+  # 2. Install Homebrew (skip if already installed)
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  # 3. Install build dependencies
+  brew install cmake ninja qt@6 boost sdl2 ffmpeg openssl zstd \
+      pkg-config ccache
+
+  # 4. Clone the repo (or use your existing local checkout)
+  git clone --recursive https://github.com/gammermanbob-droid/SweepDSEmu.git
+  cd SweepDSEmu
+
+  # 5. Configure and build (mirrors .ci/macos.sh)
+  mkdir build && cd build
+  cmake .. -GNinja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DENABLE_QT_TRANSLATION=ON \
+      -DENABLE_ROOM_STANDALONE=OFF \
+      -DUSE_DISCORD_PRESENCE=ON
+  ninja
+
+  # 6. Build the distributable, self-contained .app bundle
+  #    (bundles Qt/library dependencies via macdeployqt — this is the
+  #    one you actually want to run/distribute, not the raw bin/Release
+  #    executable, which expects your build machine's exact library
+  #    paths)
+  ninja bundle
+
+  # 7. Run it
+  open build/bundle/azahar.app
+
+First-run setup specific to SweepDSEmu (DS support)
+----------------------------------------------------
+- Put your .nds ROMs under the emulated SD card at:
+    ~/Library/Application Support/AzaharPlus/sdmc/roms/nds/
+- For a TWiLightMenu++/nds-bootstrap style DS menu (browse DS games
+  from within the emulator, not just Azahar's own list), drop
+  nds-bootstrap's BOOT.NDS and its supporting folders directly onto
+  that same SD card root (~/Library/Application Support/AzaharPlus/sdmc/).
+- To make a DS game (or BOOT.NDS itself) show up as a real icon on the
+  emulated 3DS HOME Menu, use the forwarder generator:
+
+    python3 tools/make_ds_forwarder.py "/path/to/game.nds" \
+        --output-dir ~/Desktop/forwarders \
+        --user-dir "~/Library/Application Support/AzaharPlus/"
+
+  Then install the resulting .cia through Azahar's own
+  File > Install CIA (or headlessly: azahar --install path/to/game.cia).
+  Optional: pass --title "Custom Name" to override the icon's title
+  (useful for homebrew like BOOT.NDS that don't have a clean built-in
+  name).
+
+
+===========================================================
+2. WINDOWS (via Wine, or a real Windows machine/VM)
+===========================================================
+
+Option A — Download the CI-built .exe (recommended, once CI runs clean)
+-------------------------------------------------------------------------
+  1. Go to: https://github.com/gammermanbob-droid/SweepDSEmu/actions
+  2. Open the latest successful "windows" build under the build.yml
+     workflow run for your branch.
+  3. Download the build artifact (a zipped bundle containing azahar.exe
+     and its DLLs) from the run's "Artifacts" section.
+  4. Unzip it somewhere, e.g. ~/SweepDSEmu-windows/
+
+Option B — Build it yourself on Windows (mirrors .ci/windows.sh)
+-------------------------------------------------------------------
+Run these from a Visual Studio Developer PowerShell/Command Prompt,
+with vcpkg and the Vulkan SDK installed:
+
+  mkdir build
+  cd build
+  cmake .. -G Ninja ^
+      -DCMAKE_BUILD_TYPE=Release ^
+      -DENABLE_QT_TRANSLATION=ON ^
+      -DUSE_DISCORD_PRESENCE=ON
+  ninja
+  ninja bundle
+
+  The finished app is at build\bundle\azahar.exe (plus its DLLs in the
+  same folder — copy the whole bundle folder together).
+
+Running it under Wine (macOS or Linux)
+-----------------------------------------
+  # 1. Install Wine (macOS via Homebrew)
+  brew install --cask wine-stable
+  # or on Linux: use your distro's wine package / WineHQ repo
+
+  # 2. Set up a Wine prefix (first time only)
+  WINEPREFIX=~/.wine-sweepdsemu winecfg
+
+  # 3. Run the built/downloaded Windows bundle
+  WINEPREFIX=~/.wine-sweepdsemu wine "/path/to/SweepDSEmu-windows/azahar.exe"
+
+Important caveat: SweepDSEmu (like upstream Azahar) renders via Vulkan.
+Wine's Vulkan support depends on your platform's translation layer
+(DXVK/vkd3d on Linux, or MoltenVK-backed passthrough on macOS via
+something like a Game Porting Toolkit setup) and is not guaranteed to
+work — if the window opens but nothing renders, or it crashes on boot,
+that's a Wine/Vulkan compatibility issue, not a bug in the emulator
+itself. A real Windows install or VM (Parallels/UTM/Boot Camp) will be
+far more reliable for actual testing.
+
+First-run setup specific to SweepDSEmu (DS support), Windows edition
+------------------------------------------------------------------------
+Same as macOS, just with Windows-style paths — Azahar's user data
+directory on Windows is normally:
+    %APPDATA%\AzaharPlus\sdmc\roms\nds\
+(or wherever you configured it in Emulation > Configure > System >
+"Filesystem" if you changed the default user data location).
+
+The forwarder generator (tools/make_ds_forwarder.py) is a plain Python
+script and needs bannertool/makerom/devkitARM's Windows builds — see
+tools/make_ds_forwarder.py --help for the exact flags to point it at
+those tool paths on Windows.
+
+
+===========================================================
+Quick reference — full command lists
+===========================================================
+
+macOS (build + run):
+  xcode-select --install
+  brew install cmake ninja qt@6 boost sdl2 ffmpeg openssl zstd pkg-config ccache
+  git clone --recursive https://github.com/gammermanbob-droid/SweepDSEmu.git
+  cd SweepDSEmu
+  mkdir build && cd build
+  cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT_TRANSLATION=ON -DENABLE_ROOM_STANDALONE=OFF -DUSE_DISCORD_PRESENCE=ON
+  ninja
+  ninja bundle
+  open build/bundle/azahar.app
+
+Windows build (on Windows, with vcpkg + Vulkan SDK installed):
+  mkdir build
+  cd build
+  cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT_TRANSLATION=ON -DUSE_DISCORD_PRESENCE=ON
+  ninja
+  ninja bundle
+
+Windows build, running under Wine:
+  brew install --cask wine-stable
+  WINEPREFIX=~/.wine-sweepdsemu winecfg
+  WINEPREFIX=~/.wine-sweepdsemu wine "/path/to/azahar.exe"
