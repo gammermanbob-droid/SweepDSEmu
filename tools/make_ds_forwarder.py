@@ -150,10 +150,28 @@ def build_stub_elf(work_dir, devkitarm, log):
 
 # --- Icon/banner via bannertool -----------------------------------------
 
-SILENT_WAV = (
-    b"RIFF" + struct.pack("<I", 36) + b"WAVEfmt " + struct.pack("<I", 16) +
-    struct.pack("<HHIIHH", 1, 1, 8000, 8000, 1, 8) + b"data" + struct.pack("<I", 0)
-)
+def _build_silent_wav(duration_seconds=1.0, sample_rate=32728):
+    # A zero-length data chunk is technically a valid WAV file, but
+    # bannertool's banner audio is meant to loop for as long as an icon
+    # stays highlighted on the HOME Menu — some encoders either reject
+    # a zero-sample source outright or fall back to their own default
+    # tone when there's nothing to actually loop. A real (if short)
+    # run of true-zero 16-bit PCM samples is unambiguous silence
+    # either way. 32728 Hz matches the sample rate real 3DS banner
+    # audio conventionally uses.
+    num_samples = int(duration_seconds * sample_rate)
+    pcm = b"\x00\x00" * num_samples
+    data_size = len(pcm)
+    fmt_chunk = struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    riff_size = 4 + (8 + len(fmt_chunk)) + (8 + data_size)
+    return (
+        b"RIFF" + struct.pack("<I", riff_size) + b"WAVE" +
+        b"fmt " + struct.pack("<I", len(fmt_chunk)) + fmt_chunk +
+        b"data" + struct.pack("<I", data_size) + pcm
+    )
+
+
+SILENT_WAV = _build_silent_wav()
 
 
 def build_smdh_and_banner(work_dir, bannertool, title, icon, icon_png, log):
