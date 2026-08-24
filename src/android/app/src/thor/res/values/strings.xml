@@ -5,7 +5,7 @@
 <resources>
 
     <!-- Overrides app_name from src/main/res/values/strings.xml for the
-         thor product flavor only -- everything else is inherited
+         thor product flavor only: everything else is inherited
          unchanged via Android's standard flavor resource merging. -->
     <string name="app_name" translatable="false">SweepDSEmuTHOR</string>
 
