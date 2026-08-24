@@ -477,8 +477,30 @@ elseif(APPLE)
     target_include_directories(melonds_core PUBLIC "${ZSTD_INCLUDE_DIR}")
     target_link_libraries(melonds_core PUBLIC "${ZSTD_LIBRARY}")
 else()
-    find_package(zstd REQUIRED)
-    target_link_libraries(melonds_core PUBLIC zstd::libzstd)
+    find_package(zstd QUIET)
+    if(TARGET zstd::libzstd)
+        target_link_libraries(melonds_core PUBLIC zstd::libzstd)
+    else()
+        # No system zstd package on this platform (seen on Windows and
+        # the Android NDK, likely any future platform we add too) —
+        # build it from source instead of requiring a separate
+        # per-platform package-manager install every time this comes
+        # up. Built via add_subdirectory (not install-exported), zstd's
+        # own CMakeLists.txt names this target plain "libzstd_static",
+        # with no "zstd::" namespace.
+        FetchContent_Declare(
+            zstd_vendored
+            GIT_REPOSITORY https://github.com/facebook/zstd.git
+            GIT_TAG v1.5.6
+            SOURCE_SUBDIR build/cmake
+        )
+        set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+        set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+        set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(zstd_vendored)
+        target_link_libraries(melonds_core PUBLIC libzstd_static)
+    endif()
 endif()
 
 if(APPLE)
