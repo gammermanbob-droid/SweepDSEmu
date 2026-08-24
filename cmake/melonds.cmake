@@ -456,52 +456,17 @@ target_compile_definitions(melonds_core PUBLIC
     JIT_ENABLED
 )
 
-# melonDS core needs zstd (savestate compression) and a JIT backend
-# consistent with whatever Azahar already links for its own ARM JIT
-# (dynarmic). Reuse Azahar's existing zstd target if present instead
-# of fetching a second copy.
-if(TARGET zstd::libzstd_static)
-    target_link_libraries(melonds_core PUBLIC zstd::libzstd_static)
-elseif(APPLE)
-    # Homebrew's zstd isn't on the default search path and its
-    # prefix differs between Apple Silicon (/opt/homebrew) and Intel
-    # (/usr/local) Macs, so CONFIG-mode find_package() alone often
-    # misses it. Ask brew directly instead of hardcoding a path.
-    execute_process(
-        COMMAND brew --prefix zstd
-        OUTPUT_VARIABLE ZSTD_BREW_PREFIX
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    find_library(ZSTD_LIBRARY zstd PATHS "${ZSTD_BREW_PREFIX}/lib" REQUIRED)
-    find_path(ZSTD_INCLUDE_DIR zstd.h PATHS "${ZSTD_BREW_PREFIX}/include" REQUIRED)
-    target_include_directories(melonds_core PUBLIC "${ZSTD_INCLUDE_DIR}")
-    target_link_libraries(melonds_core PUBLIC "${ZSTD_LIBRARY}")
-else()
-    find_package(zstd QUIET)
-    if(TARGET zstd::libzstd)
-        target_link_libraries(melonds_core PUBLIC zstd::libzstd)
-    else()
-        # No system zstd package on this platform (seen on Windows and
-        # the Android NDK, likely any future platform we add too) —
-        # build it from source instead of requiring a separate
-        # per-platform package-manager install every time this comes
-        # up. Built via add_subdirectory (not install-exported), zstd's
-        # own CMakeLists.txt names this target plain "libzstd_static",
-        # with no "zstd::" namespace.
-        FetchContent_Declare(
-            zstd_vendored
-            GIT_REPOSITORY https://github.com/facebook/zstd.git
-            GIT_TAG v1.5.6
-            SOURCE_SUBDIR build/cmake
-        )
-        set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
-        set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-        set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-        set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(zstd_vendored)
-        target_link_libraries(melonds_core PUBLIC libzstd_static)
-    endif()
-endif()
+# melonDS core needs zstd (savestate compression). Azahar's own
+# externals/CMakeLists.txt (add_subdirectory(externals), always
+# processed before this file is included — see CMakeLists.txt) already
+# creates a plain "zstd" INTERFACE target unconditionally, whether
+# USE_SYSTEM_ZSTD finds a system package or it builds one from the
+# vendored externals/zstd submodule — the same target either way, on
+# every platform. Reuse it directly instead of duplicating that
+# discovery/build logic here (an earlier version of this file tried to
+# vendor a second copy via FetchContent when no system package was
+# found, which collided with this exact target on Android).
+target_link_libraries(melonds_core PUBLIC zstd)
 
 if(APPLE)
     # melonDS's GPU code has a Metal-backed OpenGL path on macOS
