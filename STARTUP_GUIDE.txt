@@ -49,7 +49,8 @@ Commands
       -DCMAKE_BUILD_TYPE=Release \
       -DENABLE_QT_TRANSLATION=ON \
       -DENABLE_ROOM_STANDALONE=OFF \
-      -DUSE_DISCORD_PRESENCE=ON
+      -DUSE_DISCORD_PRESENCE=ON \
+      -DUSE_SYSTEM_QT=ON
   ninja
 
   # 6. Build the distributable, self-contained .app bundle
@@ -61,6 +62,18 @@ Commands
 
   # 7. Run it
   open build/bundle/azahar.app
+
+IMPORTANT: pass -DUSE_SYSTEM_QT=ON on macOS
+--------------------------------------------
+Without this flag, the build downloads its own private copy of Qt
+(via aqtinstall) to build against, but the "ninja bundle" step still
+uses your system's Homebrew macdeployqt tool to package it — if you
+also have Homebrew's qt@6 installed (likely, since it's a listed
+dependency), that mismatch causes the built .app to crash on launch
+with a dyld symbol error (QtConcurrent/QtCore version mismatch).
+-DUSE_SYSTEM_QT=ON makes the whole build and the bundling step use
+the one Homebrew Qt install consistently.
+
 
 First-run setup specific to SweepDSEmu (DS support)
 ----------------------------------------------------
@@ -159,7 +172,7 @@ macOS (build + run):
   git clone --recursive https://github.com/gammermanbob-droid/SweepDSEmu.git
   cd SweepDSEmu
   mkdir build && cd build
-  cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT_TRANSLATION=ON -DENABLE_ROOM_STANDALONE=OFF -DUSE_DISCORD_PRESENCE=ON
+  cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT_TRANSLATION=ON -DENABLE_ROOM_STANDALONE=OFF -DUSE_DISCORD_PRESENCE=ON -DUSE_SYSTEM_QT=ON
   ninja
   ninja bundle
   open build/bundle/azahar.app
