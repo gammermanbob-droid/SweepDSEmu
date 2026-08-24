@@ -1646,6 +1646,23 @@ void SVC::SleepThread(s64 nanoseconds) {
         return;
     }
 
+    // Negative values are yield sentinels, not sleep durations (see 3dbrew's
+    // SleepThread page): -1 yields without dispatch-queue rebalancing, -2 yields
+    // with rebalancing. Neither means "sleep forever" on real hardware, but
+    // Thread::WakeAfterDelay() intentionally skips scheduling a wakeup timer for
+    // -1, so routing these through the timed-sleep path below parks the thread
+    // with nothing left to ever wake it back up. Some titles rely on this for
+    // lightweight cooperative yielding (e.g. RetroArch's threading layer), and
+    // hitting it hangs that thread permanently. Treat it as a plain reschedule
+    // instead: ThreadManager::SwitchContext() already re-queues a thread that's
+    // still Running when it loses the CPU (see its "previous thread" handling),
+    // which is exactly yield semantics, so just ask for a reschedule without
+    // taking this thread out of rotation.
+    if (nanoseconds < 0) {
+        system.PrepareReschedule();
+        return;
+    }
+
     // Sleep current thread and check for next thread to schedule
     thread_manager.WaitCurrentThread_Sleep();
 
