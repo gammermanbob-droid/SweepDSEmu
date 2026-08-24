@@ -101,28 +101,48 @@ First-run setup specific to SweepDSEmu (DS support)
 2. WINDOWS (via Wine, or a real Windows machine/VM)
 ===========================================================
 
-Option A — Download the CI-built .exe (recommended, once CI runs clean)
--------------------------------------------------------------------------
+IMPORTANT: use the MSYS2 build, not MSVC
+------------------------------------------
+The CI (.github/workflows/build.yml) builds Windows two ways — MSYS2
+(a Clang/MinGW toolchain) and MSVC (Microsoft's own compiler). Only
+MSYS2 actually works right now: melonDS's own upstream source was
+only ever built with GCC/Clang (its own Windows builds go through
+MinGW too, never MSVC) and leans on GCC/Clang-only constructs deep
+inside its x64 JIT compiler that MSVC's parser can't handle. Several
+of these have been patched already (see cmake/melonds.cmake's MSVC
+compat header), but new ones keep surfacing further into the JIT
+backend, so MSVC support is left unfinished for now. Use the MSYS2
+build/artifact — it's a real, fully working Windows .exe.
+
+Option A — Download the CI-built .exe (recommended)
+-------------------------------------------------------------------
   1. Go to: https://github.com/gammermanbob-droid/SweepDSEmu/actions
-  2. Open the latest successful "windows" build under the build.yml
-     workflow run for your branch.
-  3. Download the build artifact (a zipped bundle containing azahar.exe
-     and its DLLs) from the run's "Artifacts" section.
+  2. Open the latest successful build.yml run for your branch.
+  3. Under that run's "windows (msys2)" job, download its build
+     artifact from the run's "Artifacts" section — a zipped bundle
+     containing azahar.exe and all its DLLs. Do NOT use the
+     "windows (msvc)" artifact/job — see above.
   4. Unzip it somewhere, e.g. ~/SweepDSEmu-windows/
 
-Option B — Build it yourself on Windows (mirrors .ci/windows.sh)
+Option B — Build it yourself on Windows via MSYS2 (mirrors .ci/windows.sh)
 -------------------------------------------------------------------
-Run these from a Visual Studio Developer PowerShell/Command Prompt,
-with vcpkg and the Vulkan SDK installed:
-
-  mkdir build
-  cd build
-  cmake .. -G Ninja ^
-      -DCMAKE_BUILD_TYPE=Release ^
-      -DENABLE_QT_TRANSLATION=ON ^
-      -DUSE_DISCORD_PRESENCE=ON
-  ninja
-  ninja bundle
+  1. Install MSYS2 (https://www.msys2.org/), then open a "CLANG64" shell
+     from its Start Menu group (not the default MSYS2/MINGW64 one).
+  2. Install the toolchain and dependencies:
+       pacman -S --needed $MINGW_PREFIX-toolchain $MINGW_PREFIX-ccache \
+           $MINGW_PREFIX-cmake $MINGW_PREFIX-ninja $MINGW_PREFIX-spirv-tools \
+           $MINGW_PREFIX-qt6-base $MINGW_PREFIX-qt6-multimedia \
+           $MINGW_PREFIX-qt6-multimedia-wmf $MINGW_PREFIX-qt6-tools \
+           $MINGW_PREFIX-qt6-translations $MINGW_PREFIX-zlib $MINGW_PREFIX-zstd
+  3. From that same CLANG64 shell, in the repo root:
+       mkdir build
+       cd build
+       cmake .. -G Ninja \
+           -DCMAKE_BUILD_TYPE=Release \
+           -DENABLE_QT_TRANSLATION=ON \
+           -DUSE_DISCORD_PRESENCE=ON
+       ninja
+       ninja bundle
 
   The finished app is at build\bundle\azahar.exe (plus its DLLs in the
   same folder — copy the whole bundle folder together).
@@ -177,7 +197,8 @@ macOS (build + run):
   ninja bundle
   open build/bundle/azahar.app
 
-Windows build (on Windows, with vcpkg + Vulkan SDK installed):
+Windows build (MSYS2 CLANG64 shell — NOT a plain/MSVC shell, see above):
+  pacman -S --needed $MINGW_PREFIX-toolchain $MINGW_PREFIX-cmake $MINGW_PREFIX-ninja $MINGW_PREFIX-spirv-tools $MINGW_PREFIX-qt6-base $MINGW_PREFIX-qt6-multimedia $MINGW_PREFIX-qt6-multimedia-wmf $MINGW_PREFIX-qt6-tools $MINGW_PREFIX-qt6-translations $MINGW_PREFIX-zlib $MINGW_PREFIX-zstd
   mkdir build
   cd build
   cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT_TRANSLATION=ON -DUSE_DISCORD_PRESENCE=ON
