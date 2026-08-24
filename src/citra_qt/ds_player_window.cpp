@@ -174,6 +174,7 @@ DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidg
             key_to_button_[it.value()] = it.key();
         }
     }
+    return_to_home_menu_key_ = DSControlsConfig::LoadReturnToHomeMenuKey();
 
     auto core = MergedCore::CoreFactory::CreateFor(rom_path.toStdString());
     const int audio_rate = core->GetAudioSampleRate();
@@ -305,6 +306,15 @@ void DSPlayerWindow::mouseReleaseEvent(QMouseEvent* /*event*/) {
 
 void DSPlayerWindow::keyPressEvent(QKeyEvent* event) {
     if (event->isAutoRepeat()) {
+        return;
+    }
+
+    // The return-to-HOME-Menu hotkey is user-remappable (ConfigureDSControls);
+    // check it before the fixed F1/F5/F9 emulator hotkeys below, in case
+    // it's ever rebound to collide with one of them.
+    if (event->key() == return_to_home_menu_key_) {
+        emit RequestReturnToHomeMenu();
+        close();
         return;
     }
 

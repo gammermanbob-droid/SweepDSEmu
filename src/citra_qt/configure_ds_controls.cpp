@@ -13,7 +13,8 @@
 using MergedCore::DSButton;
 
 ConfigureDSControls::ConfigureDSControls(QWidget* parent)
-    : QDialog(parent), bindings_(DSControlsConfig::LoadKeyBindings()) {
+    : QDialog(parent), bindings_(DSControlsConfig::LoadKeyBindings()),
+      home_menu_key_(DSControlsConfig::LoadReturnToHomeMenuKey()) {
     setWindowTitle(tr("Configure DS Controls"));
     setFocusPolicy(Qt::StrongFocus);
 
@@ -34,6 +35,14 @@ ConfigureDSControls::ConfigureDSControls(QWidget* parent)
         form->addRow(DSControlsConfig::ButtonName(button) + QStringLiteral(":"), key_button);
     }
     layout->addLayout(form);
+
+    auto* hotkeys_form = new QFormLayout();
+    home_menu_key_button_ = new QPushButton(this);
+    home_menu_key_button_->setCheckable(false);
+    connect(home_menu_key_button_, &QPushButton::clicked, this,
+            [this]() { BeginListeningForHomeMenuKey(home_menu_key_button_); });
+    hotkeys_form->addRow(tr("Return to 3DS HOME Menu:"), home_menu_key_button_);
+    layout->addLayout(hotkeys_form);
 
     auto* restore_defaults = new QPushButton(tr("Restore Defaults"), this);
     connect(restore_defaults, &QPushButton::clicked, this, &ConfigureDSControls::RestoreDefaults);
@@ -56,6 +65,8 @@ void ConfigureDSControls::RebuildButtonLabels() {
         const int key = bindings_.value(it.key(), 0);
         it.value()->setText(key != 0 ? QKeySequence(key).toString() : tr("(unbound)"));
     }
+    home_menu_key_button_->setText(
+        home_menu_key_ != 0 ? QKeySequence(home_menu_key_).toString() : tr("(unbound)"));
 }
 
 void ConfigureDSControls::BeginListening(DSButton button, QPushButton* target) {
@@ -69,6 +80,20 @@ void ConfigureDSControls::BeginListening(DSButton button, QPushButton* target) {
 
     listening_target_ = target;
     listening_button_ = button;
+    listening_for_home_menu_key_ = false;
+    target->setText(tr("Press a key..."));
+    setFocus();
+}
+
+void ConfigureDSControls::BeginListeningForHomeMenuKey(QPushButton* target) {
+    if (listening_target_ == target) {
+        listening_target_ = nullptr;
+        RebuildButtonLabels();
+        return;
+    }
+
+    listening_target_ = target;
+    listening_for_home_menu_key_ = true;
     target->setText(tr("Press a key..."));
     setFocus();
 }
@@ -83,20 +108,28 @@ void ConfigureDSControls::keyPressEvent(QKeyEvent* event) {
     // — otherwise a mis-click here could make it impossible to
     // press Escape to back out of this exact dialog again.
     if (event->key() != Qt::Key_Escape) {
-        bindings_[listening_button_] = event->key();
+        if (listening_for_home_menu_key_) {
+            home_menu_key_ = event->key();
+        } else {
+            bindings_[listening_button_] = event->key();
+        }
     }
 
     listening_target_ = nullptr;
+    listening_for_home_menu_key_ = false;
     RebuildButtonLabels();
 }
 
 void ConfigureDSControls::RestoreDefaults() {
     listening_target_ = nullptr;
+    listening_for_home_menu_key_ = false;
     bindings_ = DSControlsConfig::DefaultKeyBindings();
+    home_menu_key_ = DSControlsConfig::DefaultReturnToHomeMenuKey();
     RebuildButtonLabels();
 }
 
 void ConfigureDSControls::Accept() {
     DSControlsConfig::SaveKeyBindings(bindings_);
+    DSControlsConfig::SaveReturnToHomeMenuKey(home_menu_key_);
     accept();
 }

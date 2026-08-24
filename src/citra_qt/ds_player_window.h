@@ -83,6 +83,13 @@ public:
     explicit DSPlayerWindow(const QString& rom_path, QWidget* parent = nullptr);
     ~DSPlayerWindow() override;
 
+signals:
+    // Emitted on the "return to 3DS HOME Menu" hotkey (F12) — a
+    // deliberate user action distinct from just closing the window, so
+    // it fires regardless of whether this session was launched from a
+    // forwarder or picked directly from Azahar's own list.
+    void RequestReturnToHomeMenu();
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -121,6 +128,11 @@ private:
     // session rather than live, so this doesn't need to watch for
     // changes made in ConfigureDSControls while a session is running.
     QMap<int, MergedCore::DSButton> key_to_button_;
+
+    // Built once at construction from
+    // DSControlsConfig::LoadReturnToHomeMenuKey() — same
+    // load-once-at-construction rationale as key_to_button_ above.
+    int return_to_home_menu_key_;
 
     static constexpr int kScreenWidth = 256;
     static constexpr int kScreenHeight = 192;

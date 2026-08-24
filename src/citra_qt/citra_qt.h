@@ -184,6 +184,7 @@ private:
     // rebooted so the user lands back where they started.
     void BootDSGame(const QString& filename, bool return_to_home_menu = false);
     void BootHomeMenuForCurrentRegion();
+    void OnDSRequestReturnToHomeMenu();
     void ShutdownGame();
 
 #ifdef USE_DISCORD_PRESENCE

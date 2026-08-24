@@ -2872,7 +2872,27 @@ void GMainWindow::BootDSGame(const QString& filename, bool return_to_home_menu) 
         connect(ds_player_window, &QObject::destroyed, this,
                 &GMainWindow::BootHomeMenuForCurrentRegion);
     }
+    // The return-to-HOME-Menu hotkey (F12 by default) is a deliberate
+    // user action available regardless of how this session started —
+    // unlike the destroyed-based connection above, which only applies
+    // when a forwarder shut the 3DS system down to make room for this
+    // DS session in the first place.
+    connect(ds_player_window, &DSPlayerWindow::RequestReturnToHomeMenu, this,
+            &GMainWindow::OnDSRequestReturnToHomeMenu);
     ds_player_window->show();
+}
+
+void GMainWindow::OnDSRequestReturnToHomeMenu() {
+    if (ds_player_window) {
+        // If this session was also forwarder-launched, the destroyed
+        // connection set up in BootDSGame() would otherwise fire too
+        // once ds_player_window->close() below actually destroys it
+        // (WA_DeleteOnClose), double-booting the HOME Menu.
+        disconnect(ds_player_window, &QObject::destroyed, this,
+                   &GMainWindow::BootHomeMenuForCurrentRegion);
+        ds_player_window->close();
+    }
+    BootHomeMenuForCurrentRegion();
 }
 
 void GMainWindow::BootHomeMenuForCurrentRegion() {

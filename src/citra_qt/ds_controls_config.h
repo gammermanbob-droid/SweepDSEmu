@@ -33,4 +33,12 @@ QString ButtonName(MergedCore::DSButton button);
 // All twelve buttons, in the order they should be presented/iterated.
 const QList<MergedCore::DSButton>& AllButtons();
 
+// The "return to 3DS HOME Menu" hotkey — not a DS button (it closes the
+// DS session entirely), so it's stored and exposed separately from
+// KeyBindings/AllButtons rather than folded into MergedCore::DSButton,
+// which is a real hardware bitmask used to drive the emulated console.
+int DefaultReturnToHomeMenuKey();
+int LoadReturnToHomeMenuKey();
+void SaveReturnToHomeMenuKey(int key);
+
 } // namespace DSControlsConfig

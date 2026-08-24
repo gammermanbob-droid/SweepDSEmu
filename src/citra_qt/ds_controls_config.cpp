@@ -118,4 +118,32 @@ void SaveKeyBindings(const KeyBindings& bindings) {
     settings.sync();
 }
 
+int DefaultReturnToHomeMenuKey() {
+    return Qt::Key_F12;
+}
+
+int LoadReturnToHomeMenuKey() {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSControls"));
+    const QVariant stored = settings.value(QStringLiteral("key_ReturnToHomeMenu"));
+    settings.endGroup();
+
+    if (stored.isValid()) {
+        bool ok = false;
+        const int key = stored.toInt(&ok);
+        if (ok) {
+            return key;
+        }
+    }
+    return DefaultReturnToHomeMenuKey();
+}
+
+void SaveReturnToHomeMenuKey(int key) {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSControls"));
+    settings.setValue(QStringLiteral("key_ReturnToHomeMenu"), key);
+    settings.endGroup();
+    settings.sync();
+}
+
 } // namespace DSControlsConfig
