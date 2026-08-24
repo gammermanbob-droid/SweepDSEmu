@@ -182,6 +182,14 @@ def build_smdh_and_banner(work_dir, bannertool, title, icon, icon_png, log):
             bannertool, "makesmdh",
             "-s", title, "-l", title, "-p", "Azahar",
             "-i", icon_png, "-o", smdh,
+            # Real commercial titles set "extendedbanner" whenever they
+            # ship a full CWAV-audio banner (which is exactly what
+            # build_smdh_and_banner does below) — leaving it unset while
+            # a real audio-bearing banner is present looks like a plain
+            # source of the HOME Menu's "your banner doesn't match what
+            # I expected" error tone as soon as the icon is highlighted,
+            # even though the audio data itself is genuine silence.
+            "-f", "visible,extendedbanner",
         ],
         check=True,
     )
