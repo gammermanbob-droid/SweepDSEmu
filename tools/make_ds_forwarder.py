@@ -174,7 +174,22 @@ def _build_silent_wav(duration_seconds=1.0, sample_rate=32728):
 SILENT_WAV = _build_silent_wav()
 
 
-def build_smdh_and_banner(work_dir, bannertool, title, icon, icon_png, log):
+def _fit_cover(img, size):
+    """Scale img to fully cover size (aspect-preserving), center-cropping
+    the overflow — standard "cover" fit for box art, avoiding letterboxing
+    or distortion."""
+    target_w, target_h = size
+    src_w, src_h = img.size
+    scale = max(target_w / src_w, target_h / src_h)
+    new_w, new_h = round(src_w * scale), round(src_h * scale)
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - target_w) // 2
+    top = (new_h - target_h) // 2
+    return resized.crop((left, top, left + target_w, top + target_h))
+
+
+def build_smdh_and_banner(work_dir, bannertool, title, icon, icon_png, log,
+                          custom_banner_image=None, silent_wav_path=None):
     smdh = os.path.join(work_dir, "forwarder.smdh")
     log(f"Building SMDH ({title!r}) -> {smdh}")
     subprocess.run(
@@ -196,17 +211,24 @@ def build_smdh_and_banner(work_dir, bannertool, title, icon, icon_png, log):
 
     # The banner image is a fixed 256x128 (bannertool enforces this
     # exactly) — a separate canvas from the 48x48 SMDH icon, not just
-    # the icon at a different size. Center the icon, upscaled a bit
-    # further, on a plain background.
-    banner_img = Image.new("RGBA", (256, 128), (32, 32, 48, 255))
-    banner_icon = icon.resize((96, 96), Image.NEAREST)
-    banner_img.paste(banner_icon, ((256 - 96) // 2, (128 - 96) // 2), banner_icon)
+    # the icon at a different size.
+    if custom_banner_image:
+        banner_img = _fit_cover(Image.open(custom_banner_image).convert("RGBA"), (256, 128))
+    else:
+        # No cover art supplied — fall back to the icon, upscaled and
+        # centered on a plain background.
+        banner_img = Image.new("RGBA", (256, 128), (32, 32, 48, 255))
+        banner_icon = icon.resize((96, 96), Image.NEAREST)
+        banner_img.paste(banner_icon, ((256 - 96) // 2, (128 - 96) // 2), banner_icon)
     banner_png = os.path.join(work_dir, "banner.png")
     banner_img.save(banner_png)
 
-    silence_wav = os.path.join(work_dir, "silence.wav")
-    with open(silence_wav, "wb") as f:
-        f.write(SILENT_WAV)
+    if silent_wav_path:
+        silence_wav = silent_wav_path
+    else:
+        silence_wav = os.path.join(work_dir, "silence.wav")
+        with open(silence_wav, "wb") as f:
+            f.write(SILENT_WAV)
 
     banner = os.path.join(work_dir, "forwarder.bnr")
     log(f"Building banner -> {banner}")
@@ -280,6 +302,11 @@ def main():
     parser.add_argument("rom", help="Path to the .nds ROM to forward to")
     parser.add_argument("--title", help="Override the forwarder's title "
                         "(defaults to the ROM's filename)")
+    parser.add_argument("--banner-image", help="Cover art (PNG/JPG) to use for the "
+                        "HOME Menu banner instead of the ROM's own icon, "
+                        "center-cropped to fill the 256x128 banner")
+    parser.add_argument("--silent-wav", help="WAV file to use for the banner's "
+                        "(silent) audio track instead of the generated one")
     parser.add_argument("--output-dir", default=".", help="Where to write the .cia")
     parser.add_argument("--user-dir", required=True,
                         help="Azahar's UserDir (where ds_forwarders.txt lives)")
@@ -346,7 +373,9 @@ def main():
         icon.resize((48, 48), Image.NEAREST).save(icon_png)
 
         elf = build_stub_elf(work_dir, args.devkitarm, log)
-        smdh, banner = build_smdh_and_banner(work_dir, args.bannertool, title, icon, icon_png, log)
+        smdh, banner = build_smdh_and_banner(work_dir, args.bannertool, title, icon, icon_png, log,
+                                             custom_banner_image=args.banner_image,
+                                             silent_wav_path=args.silent_wav)
 
         os.makedirs(args.output_dir, exist_ok=True)
         safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in title).strip()
