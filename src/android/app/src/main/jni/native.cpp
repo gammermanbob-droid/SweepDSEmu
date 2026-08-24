@@ -1020,6 +1020,22 @@ void Java_org_citra_citra_1emu_NativeLibrary_run__Ljava_lang_String_2(JNIEnv* en
     }
 
     const Core::System::ResultStatus result{RunCitra(path)};
+
+    // A DS forwarder CIA's own 3DS code is a do-nothing stub; NS::LaunchTitle
+    // (src/core/hle/service/apt/ns.cpp) redirects it to boot the DS ROM
+    // instead by stashing the path here and making the caller treat this as
+    // a failed launch (see that file's comment for the full mechanism, and
+    // ds_player_window.cpp for the same redirect on the Qt frontend). Check
+    // for that before treating a non-Success result as a real error.
+    std::string ds_forward_path = Core::System::GetInstance().ConsumeDSForwardPath();
+    if (!ds_forward_path.empty()) {
+        jstring j_ds_path = env->NewStringUTF(ds_forward_path.c_str());
+        env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),
+                                  IDCache::GetLaunchDsForwarder(), j_ds_path);
+        env->DeleteLocalRef(j_ds_path);
+        return;
+    }
+
     if (result != Core::System::ResultStatus::Success) {
         env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),
                                   IDCache::GetExitEmulationActivity(), static_cast<int>(result));

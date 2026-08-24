@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright Citra Emulator Project / Azahar Emulator Project
+     Licensed under GPLv2 or any later version
+     Refer to the license.txt file included. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <SurfaceView
+            android:id="@+id/surface_ds_top"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <SurfaceView
+            android:id="@+id/surface_ds_bottom"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
+    <!-- Touch button overlay populated programmatically in
+         DsEmulationActivity -- DS has few enough buttons (A/B/X/Y, L/R,
+         Start/Select, D-pad) that plain positioned Buttons are simpler
+         and lower-risk than reworking InputOverlay's 3DS-specific bitmap
+         drawable system to also understand DS's button set. -->
+    <FrameLayout
+        android:id="@+id/ds_button_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</FrameLayout>

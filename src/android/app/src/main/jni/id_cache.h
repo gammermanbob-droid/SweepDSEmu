@@ -28,6 +28,8 @@ jmethodID GetAlertPromptButton();
 jmethodID GetLandscapeScreenLayout();
 jmethodID GetPortraitScreenLayout();
 jmethodID GetExitEmulationActivity();
+jmethodID GetLaunchDsForwarder();
+jmethodID GetExitDsEmulationActivity();
 jmethodID GetRequestCameraPermission();
 jmethodID GetRequestMicPermission();
 jmethodID GetAddNetPlayMessage();

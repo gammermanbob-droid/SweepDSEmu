@@ -9,6 +9,7 @@ package org.citra.citra_emu
 import android.Manifest.permission
 import android.app.Dialog
 import android.content.DialogInterface
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -29,6 +30,7 @@ import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.lang.ref.WeakReference
 import java.util.Date
+import org.citra.citra_emu.activities.DsEmulationActivity
 import org.citra.citra_emu.activities.EmulationActivity
 import org.citra.citra_emu.model.Game
 import org.citra.citra_emu.utils.BuildUtil
@@ -51,6 +53,9 @@ object NativeLibrary {
 
     @JvmField
     var sEmulationActivity = WeakReference<EmulationActivity?>(null)
+
+    @JvmField
+    var sDsEmulationActivity = WeakReference<DsEmulationActivity?>(null)
     private var alertResult = false
     val alertLock = Object()
 
@@ -208,6 +213,40 @@ object NativeLibrary {
      * Returns the title ID of the currently running title, or 0 on failure.
      */
     external fun getRunningTitleId(): Long
+
+    // DS/DSi emulation (MergedCore::EmulationCore / MelonDsCore). Parallel
+    // to the run()/surfaceChanged()/pauseEmulation() family above, but
+    // separate: unlike the 3DS renderer, the DS core hands back plain
+    // RGBA8888 pixel buffers per frame rather than driving a GL/Vulkan
+    // context, so it's bridged via ANativeWindow blits instead (see
+    // jni/ds_native.cpp) and needs its own top/bottom surfaces since a DS
+    // session can run independently of any 3DS session.
+    external fun dsRun(path: String)
+    external fun dsStopEmulation()
+    external fun dsPauseEmulation()
+    external fun dsUnPauseEmulation()
+    external fun dsIsRunning(): Boolean
+    external fun dsRequestReset()
+    external fun dsSaveState(path: String)
+    external fun dsLoadState(path: String)
+    external fun dsTopSurfaceChanged(surf: Surface)
+    external fun dsTopSurfaceDestroyed()
+    external fun dsBottomSurfaceChanged(surf: Surface)
+    external fun dsBottomSurfaceDestroyed()
+
+    /**
+     * Presses or releases one DS button. [buttonBit] is one of
+     * [DsButtonType]'s pre-resolved MergedCore::DSButton bitmask values,
+     * not a per-button ID -- there's no separate factory/device registry
+     * for DS input like there is for 3DS's onGamePadEvent.
+     */
+    external fun dsOnButtonEvent(buttonBit: Int, pressed: Boolean)
+
+    /**
+     * Touches or releases the DS bottom screen at ([x], [y]) in 256x192
+     * DS screen space -- callers scale from view pixel coordinates first.
+     */
+    external fun dsOnTouchEvent(x: Int, y: Int, pressed: Boolean)
 
     /**
      * Returns the performance stats for the current game
@@ -468,6 +507,53 @@ object NativeLibrary {
                 emulationActivity.supportFragmentManager,
                 EmulationErrorDialogFragment.TAG
             )
+        }
+    }
+
+    /**
+     * Called from native (see ds_native.cpp's forwarder-redirect check in
+     * native.cpp's run()) when the title just launched turned out to be a
+     * DS forwarder CIA -- its own 3DS code is a do-nothing stub whose only
+     * job is to hand off to the real DS ROM at [path]. Swap the current
+     * 3DS [EmulationActivity] for a [DsEmulationActivity] instead of
+     * treating this as a normal exit.
+     */
+    @Keep
+    @JvmStatic
+    fun launchDsForwarder(path: String) {
+        val emulationActivity = sEmulationActivity.get()
+        if (emulationActivity == null) {
+            Log.warning("[NativeLibrary] EmulationActivity is null, can't launch DS forwarder.")
+            return
+        }
+        emulationActivity.runOnUiThread {
+            val intent = Intent(emulationActivity, DsEmulationActivity::class.java)
+            intent.putExtra(DsEmulationActivity.EXTRA_DS_ROM_PATH, path)
+            emulationActivity.startActivity(intent)
+            emulationActivity.finish()
+        }
+    }
+
+    /**
+     * Called from native (ds_native.cpp) when a DS session ends: a clean
+     * stop, the emulated console powering itself off (real hardware
+     * behavior on some DS/DSi firmware settings flows, not an error), or a
+     * load failure.
+     */
+    @Keep
+    @JvmStatic
+    fun exitDsEmulationActivity(resultCode: Int) {
+        val dsEmulationActivity = sDsEmulationActivity.get()
+        if (dsEmulationActivity == null) {
+            Log.warning("[NativeLibrary] DsEmulationActivity is null, can't exit.")
+            return
+        }
+        dsEmulationActivity.runOnUiThread {
+            when {
+                resultCode < 0 -> dsEmulationActivity.showLoadError(resultCode)
+                resultCode == 1 -> dsEmulationActivity.showConsolePoweredOff()
+                else -> dsEmulationActivity.finish()
+            }
         }
     }
 
@@ -1047,6 +1133,27 @@ object NativeLibrary {
         const val BUTTON_GPIO14 = 782
         const val BUTTON_SWAP = 800
         const val BUTTON_TURBO = 801
+    }
+
+    /**
+     * Bitmask values matching MergedCore::DSButton (core/button_id_ds.h),
+     * passed as-is to [dsOnButtonEvent] -- unlike [ButtonType] these are
+     * bit flags, not per-button IDs, since DS input has no separate
+     * factory/device registry the way 3DS input does.
+     */
+    object DsButtonType {
+        const val BUTTON_A = 1 shl 0
+        const val BUTTON_B = 1 shl 1
+        const val BUTTON_X = 1 shl 2
+        const val BUTTON_Y = 1 shl 3
+        const val BUTTON_L = 1 shl 4
+        const val BUTTON_R = 1 shl 5
+        const val BUTTON_START = 1 shl 6
+        const val BUTTON_SELECT = 1 shl 7
+        const val DPAD_UP = 1 shl 8
+        const val DPAD_DOWN = 1 shl 9
+        const val DPAD_LEFT = 1 shl 10
+        const val DPAD_RIGHT = 1 shl 11
     }
 
     /**

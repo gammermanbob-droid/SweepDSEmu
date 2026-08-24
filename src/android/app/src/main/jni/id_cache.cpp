@@ -30,6 +30,8 @@ static jmethodID s_is_portrait_mode;
 static jmethodID s_landscape_screen_layout;
 static jmethodID s_portrait_screen_layout;
 static jmethodID s_exit_emulation_activity;
+static jmethodID s_launch_ds_forwarder;
+static jmethodID s_exit_ds_emulation_activity;
 static jmethodID s_request_camera_permission;
 static jmethodID s_request_mic_permission;
 static jmethodID s_add_netplay_message;
@@ -97,6 +99,14 @@ jmethodID GetPortraitScreenLayout() {
 
 jmethodID GetExitEmulationActivity() {
     return s_exit_emulation_activity;
+}
+
+jmethodID GetLaunchDsForwarder() {
+    return s_launch_ds_forwarder;
+}
+
+jmethodID GetExitDsEmulationActivity() {
+    return s_exit_ds_emulation_activity;
 }
 
 jmethodID GetRequestCameraPermission() {
@@ -190,6 +200,10 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         "(Lorg/citra/citra_emu/NativeLibrary$CoreError;Ljava/lang/String;)Z");
     s_exit_emulation_activity =
         env->GetStaticMethodID(s_native_library_class, "exitEmulationActivity", "(I)V");
+    s_launch_ds_forwarder = env->GetStaticMethodID(s_native_library_class, "launchDsForwarder",
+                                                    "(Ljava/lang/String;)V");
+    s_exit_ds_emulation_activity =
+        env->GetStaticMethodID(s_native_library_class, "exitDsEmulationActivity", "(I)V");
     s_request_camera_permission =
         env->GetStaticMethodID(s_native_library_class, "requestCameraPermission", "()Z");
     s_request_mic_permission =

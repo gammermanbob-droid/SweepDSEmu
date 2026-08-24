@@ -147,6 +147,20 @@ class EmulationActivity : AppCompatActivity() {
             return
         }
 
+        // A DS/DSi ROM selected directly from the game list (as opposed to
+        // a DS forwarder CIA, which redirects via
+        // NativeLibrary.launchDsForwarder instead -- see native.cpp's
+        // run()) needs the DS-specific player, not the 3DS emulation path
+        // this Activity otherwise sets up below.
+        val lowerPath = game.path.lowercase()
+        if (lowerPath.endsWith(".nds") || lowerPath.endsWith(".dsi")) {
+            val intent = Intent(this, DsEmulationActivity::class.java)
+            intent.putExtra(DsEmulationActivity.EXTRA_DS_ROM_PATH, game.path)
+            startActivity(intent)
+            finish()
+            return
+        }
+
         NativeLibrary.playTimeManagerStart(game.titleId)
     }
 

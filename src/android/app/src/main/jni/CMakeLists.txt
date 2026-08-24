@@ -28,6 +28,7 @@ add_library(citra-android SHARED
     multiplayer.cpp
     multiplayer.h
     native.cpp
+    ds_native.cpp
     ndk_motion.cpp
     ndk_motion.h
     system_save_game.cpp
@@ -35,7 +36,7 @@ add_library(citra-android SHARED
 )
 
 target_link_libraries(citra-android PRIVATE audio_core citra_common citra_core input_common network)
-target_link_libraries(citra-android PRIVATE android camera2ndk inih jnigraphics log mediandk yuv)
+target_link_libraries(citra-android PRIVATE android aaudio camera2ndk inih jnigraphics log mediandk yuv)
 
 if (ENABLE_OPENGL)
     target_sources(citra-android PRIVATE

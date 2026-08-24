@@ -76,6 +76,13 @@
             android:label="@string/preferences_settings"/>
 
         <activity
+            android:name="org.citra.citra_emu.activities.DsEmulationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Citra.Main"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name="org.citra.citra_emu.activities.EmulationActivity"
             android:exported="true"
             android:theme="@style/Theme.Citra.Main"
