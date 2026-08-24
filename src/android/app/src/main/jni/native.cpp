@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <codecvt>
+#include <fstream>
 #include <thread>
+#include <cstdio>
 #include <dlfcn.h>
+#include <strings.h>
 
 #include <android/api-level.h>
 #include <android/native_window_jni.h>
@@ -180,6 +183,33 @@ static bool CheckMicPermission() {
                                                                IDCache::GetRequestMicPermission());
 }
 
+// Android port of src/citra_qt/ds_forwarder_registry.cpp's ResolveForwarder --
+// same flat "<16 lowercase hex title_id>=<DS ROM path>" file format written
+// by tools/make_ds_forwarder.py, just read with plain std::ifstream instead
+// of QFile/QTextStream since this file has no Qt dependency to spare.
+static std::string ResolveAndroidDSForwarder(u64 title_id) {
+    const std::string path = FileUtil::GetUserPath(FileUtil::UserPath::UserDir) + "ds_forwarders.txt";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return {}; // No forwarders registered yet -- the common case.
+    }
+
+    char needle[18];
+    std::snprintf(needle, sizeof(needle), "%016llx=", static_cast<unsigned long long>(title_id));
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.size() >= 17 && strncasecmp(line.c_str(), needle, 17) == 0) {
+            std::string result = line.substr(17);
+            while (!result.empty() && (result.back() == '\r' || result.back() == '\n')) {
+                result.pop_back();
+            }
+            return result;
+        }
+    }
+    return {};
+}
+
 static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     // Citra core only supports a single running instance
     std::scoped_lock lock(running_mutex);
@@ -194,6 +224,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     }
 
     Core::System& system{Core::System::GetInstance()};
+    system.RegisterDSForwarderResolver(ResolveAndroidDSForwarder);
 
     if (!inserted_cartridge.empty()) {
         system.InsertCartridge(inserted_cartridge);

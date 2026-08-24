@@ -99,7 +99,16 @@ class Game(
         val allExtensions: Set<String> get() = extensions + badExtensions
 
         val extensions: Set<String> = HashSet(
-            listOf("3dsx", "app", "axf", "cci", "cxi", "elf", "z3dsx", "zcci", "zcxi", "3ds")
+            listOf(
+                "3dsx", "app", "axf", "cci", "cxi", "elf", "z3dsx", "zcci", "zcxi", "3ds",
+                // DS/DSi ROMs -- GameInfo's native NCCH/SMDH loader doesn't
+                // understand these (isValid() comes back false, same as
+                // any other unrecognized file), but that only affects the
+                // long-press "about game" dialog; the list still shows
+                // them under their filename and EmulationActivity already
+                // redirects a direct .nds/.dsi tap to DsEmulationActivity.
+                "nds", "dsi"
+            )
         )
 
         val badExtensions: Set<String> = HashSet(

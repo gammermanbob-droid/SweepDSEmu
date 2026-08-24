@@ -1,69 +1,69 @@
-<b>AzaharPlus</b> is a fork of the Azahar 3DS emulator with extra features.
+<b>SweepDS Emu</b> is a fork of Azahar (itself a 3DS emulator) that merges in a full DS/DSi core (based on melonDS), so it can run both 3DS and DS/DSi titles side by side in one app -- on desktop and Android.
 
-Each version is the same as the corresponding version of Azahar exept for this:
-- Compatibility with all game files. If a file works with any Citra fork, it works with AzaharPlus.
+![SweepDS Emu](dist/azahar.png)
+
+# DS/DSi Support
+
+The DS/DSi core runs alongside the existing 3DS core rather than replacing it. A DS ROM gets its own player window (desktop) or Activity (Android), with its own dual-screen rendering, audio, and input -- independent of the 3DS side.
+
+- **Forwarder CIAs**: `tools/make_ds_forwarder.py` builds a small 3DS CIA "forwarder" for a DS ROM, so it shows up as a normal icon on the emulated 3DS HOME Menu. Launching that icon jumps straight into the DS ROM instead of the (do-nothing) 3DS stub code the forwarder actually contains.
+- **Return to HOME Menu**: while playing a DS game, a rebindable hotkey (F12 by default on desktop; a controller "mode" button or on-screen HOME button on Android) stops the DS session and boots back into the 3DS HOME Menu, matching how forwarders behave on real hardware.
+- **Direct DS ROM launch**: `.nds`/`.dsi` files can also be picked directly from the game list without going through a forwarder.
+- **Platform status**: forwarder redirection and direct DS launch both work on desktop (Windows/Linux/macOS) and Android. The Android build reads the exact same forwarder mapping file (`ds_forwarders.txt`) as desktop -- generate forwarders on desktop, then copy the resulting CIA and mapping file over.
+
+# Features
+
+Everything from upstream Azahar, plus:
+- The DS/DSi core and forwarder system described above
+- Compatibility with all game files. If a file works with any Citra fork, it works here.
 - Ability to download system files from official servers. No need for an actual 3DS.
 - Compatibility with older CPUs (no SSE4.2 required)
-- Compatibility with Android 9
-- ZipPass: A new way to exchange StreetPass data through zip files
-- Built in cheats
+- Compatibility with Android 9+
+- ZipPass: a way to exchange StreetPass data through zip files
+- Built-in cheats
 - Amiibo generation
 - Better multiplayer compatibility with other Citra forks
 
-The Azahar logo is the property of PabloMK7 and angyartanddraw
+The base emulator logo (before this fork's rebrand) was the property of PabloMK7 and angyartanddraw.
+
 ---
-
-![Azahar Emulator](https://azahar-emu.org/resources/images/logo/azahar-name-and-logo.svg)
-![Plus](https://cdn-icons-png.flaticon.com/128/226/226974.png)
-
-![GitHub Release](https://img.shields.io/github/v/release/AzaharPlus/AzaharPlus?label=Current%20Release)
-![GitHub Downloads](https://img.shields.io/github/downloads/AzaharPlus/AzaharPlus/total?logo=github&label=GitHub%20Downloads)
 
 # Installation
 
-Download the latest release from [Releases](https://github.com/AzaharPlus/AzaharPlus/releases).
+Download the latest build from this repository's [Actions](https://github.com/gammermanbob-droid/SweepDSEmu/actions) runs, or from [Releases](https://github.com/gammermanbob-droid/SweepDSEmu/releases) once one is cut.
 
 ### Android
 
-The Android build is available in 2 flavors.
-
-- Replace: It has the same application id as Azahar, so it will replace it on the device.
-Its display name is "AzaharPlus" and its icon background is blue.
-Use this one if you have other apps that target Azahar, like a frontend for example.
-
-- Coexist: It has a new application id so it can coexist with Azahar without issues.
-Its display name is "+AzaharPlus+" and its icon background is red.
+Grab the `android-universal` artifact (`.apk` for direct install, `.aab` for a Play-Store-style bundle). Minimum Android 9.0 (64-bit).
 
 ### Cocoon
 
-The easiest way to use AzaharPlus with Cocoon is to uninstall Azahar and install the replace variant of AzaharPlus. It wiil be seen as Azahar by Cocoon.
+The easiest way to use this fork with Cocoon is to uninstall Azahar and install this build in its place -- it will be seen as Azahar by Cocoon.
 
 ### Batocera
 
-To use AzaharPlus with Batocera you can install the Batocera Unofficial Add-ons
+To use this fork with Batocera you can install the Batocera Unofficial Add-ons:
 
- https://github.com/batocera-unofficial-addons/batocera-unofficial-addons
+https://github.com/batocera-unofficial-addons/batocera-unofficial-addons
 
 # ZipPass
 
 ZipPass allows you to share StreetPass data in the form of zip files.<br>
-On desktop it is in File > ZipPass. On android it is in the main menu.
+On desktop it is in File > ZipPass. On Android it is in the main menu.
 
 - It can only be used when no game is running.
 - It requires system files and LLE modules enabled.
 - You need to enable StreetPass in your games.
 - The export feature will save the StreetPass data of all your games in a xxx.pass.zip file.
 - The import feature lets you pick one or several xxx.pass.zip files and will simulate StreetPass tags.
-- You can pick as many files as you want for the import but every game has a limit for its queue and anything - beyond that will be ignored.
-- This is all pretty experimental so in case of issues, I added a menu to disable StreetPass on every game. You won't lose anything, you will simply need to enable StreetPass again.
-- I opened a topic on the github for people to share their data: [ZipPass Exchange](https://github.com/AzaharPlus/AzaharPlus/discussions/117)
+- You can pick as many files as you want for the import but every game has a limit for its queue and anything beyond that will be ignored.
+- This is all pretty experimental, so in case of issues there's a menu to disable StreetPass on every game. You won't lose anything -- you'll simply need to enable StreetPass again.
 
 # Build instructions
 
-Please refer this repository's [wiki](https://github.com/AzaharPlus/AzaharPlus/wiki/Building-From-Source) for build instructions
+This is a standard CMake project; see `CMakeLists.txt` and `STARTUP_GUIDE.txt` in the repo root for platform-specific notes (in particular: on Windows, only the `msys2` toolchain is currently supported, not MSVC).
 
 # Minimum requirements
-Below are the minimum requirements to run AzaharPlus:
 
 ### Desktop
 ```
@@ -81,5 +81,4 @@ Memory: 2GB of RAM. 4GB is recommended
 ```
 
 # Where to find this project
-- Github: https://github.com/AzaharPlus/AzaharPlus
-- Radicle: [rad:z3A98CGFJYqHnttims4N7jYNzRoDu](https://radicle.network/nodes/rosa.radicle.network/rad%3Az3A98CGFJYqHnttims4N7jYNzRoDu)
+- GitHub: https://github.com/gammermanbob-droid/SweepDSEmu
