@@ -271,6 +271,34 @@ jobs:
         with:
           name: ${{ env.OS }}-${{ env.TARGET }}
           path: src/android/app/artifacts/
+      # Separately named/packaged build for AYN Thor and similar genuine
+      # dual-screen handhelds (see the "thor" product flavor in
+      # app/build.gradle.kts). Deliberately its own steps rather than
+      # folded into Pack/Upload above, so this can't affect the existing
+      # android-universal artifact's naming or contents -- reuses the
+      # same checkout/cache/deps this job already set up, so the native
+      # side of this second Gradle invocation is mostly cache hits.
+      - name: Build Thor
+        run: JAVA_HOME=$JAVA_HOME_17_X64 ./gradlew assembleThorRelease bundleThorRelease
+        working-directory: src/android
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+      - name: Pack Thor
+        run: |
+          mkdir -p artifacts-thor
+          apk=$(find app/build/bundle -iname "*thor*release*.apk" | head -n1)
+          aab=$(find app/build/bundle -iname "*thor*release*.aab" | head -n1)
+          [ -n "$apk" ] && cp "$apk" artifacts-thor/SweepDSEmuTHOR.apk
+          [ -n "$aab" ] && cp "$aab" artifacts-thor/SweepDSEmuTHOR.aab
+          ls -la artifacts-thor/
+        working-directory: src/android
+      - name: Upload Thor
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-thor
+          path: src/android/artifacts-thor/
 
   docker:
     runs-on: ubuntu-latest

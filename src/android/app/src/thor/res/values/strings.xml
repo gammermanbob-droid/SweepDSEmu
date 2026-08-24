@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright Citra Emulator Project / Azahar Emulator Project
+     Licensed under GPLv2 or any later version
+     Refer to the license.txt file included. -->
+<resources>
+
+    <!-- Overrides app_name from src/main/res/values/strings.xml for the
+         thor product flavor only -- everything else is inherited
+         unchanged via Android's standard flavor resource merging. -->
+    <string name="app_name" translatable="false">SweepDSEmuTHOR</string>
+
+</resources>

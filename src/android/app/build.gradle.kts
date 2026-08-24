@@ -183,6 +183,19 @@ android {
             versionNameSuffix = "-googleplay"
             // applicationId = "io.github.lime3ds.android"
         }
+        // Distinctly-named/packaged build for AYN Thor and similar
+        // genuine dual-screen handhelds (see display/SecondaryDisplay.kt
+        // and DsEmulationActivity's usingSecondaryDisplay handling).
+        // Functionally identical to vanilla -- ENABLE_SECONDARY_DISPLAY
+        // already defaults to true, so the dual-screen DS layout kicks in
+        // automatically on this kind of hardware regardless of flavor --
+        // this exists purely so the device gets a clearly labeled,
+        // separately installable build rather than one more generic APK.
+        register("thor") {
+            dimension = "version"
+            applicationIdSuffix = ".thor"
+            versionNameSuffix = "-thor"
+        }
     }
 
     externalNativeBuild {
