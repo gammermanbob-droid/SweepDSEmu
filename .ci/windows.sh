@@ -21,8 +21,11 @@ fi
 # fails outright under MSYS2's Clang toolchain), and the runner's
 # default package set also happens to include Zydis, which collides
 # with this project's own vendored Zydis copy
-# (externals/dynarmic/externals).
-if [ -z "$MSYSTEM" ]; then
+# (externals/dynarmic/externals). Check $TARGET (set directly from the
+# build matrix in build.yml) rather than $MSYSTEM: the msvc job's
+# plain "bash" shell is itself Git Bash, which is MSYS-derived and
+# sets $MSYSTEM too, so it can't tell the two jobs apart.
+if [ "$TARGET" != "msys2" ]; then
 	VCPKG_BIN="${VCPKG_INSTALLATION_ROOT:-$VCPKG_ROOT}"
 	if [ -n "$VCPKG_BIN" ]; then
 		"$VCPKG_BIN/vcpkg" install zlib:x64-windows zstd:x64-windows
