@@ -19,6 +19,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
+import org.citra.citra_emu.display.SecondaryDisplay
 
 /**
  * Plays a DS/DSi ROM via MergedCore::MelonDsCore (see core/melonds_core/),
@@ -35,9 +36,25 @@ import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
  */
 class DsEmulationActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDsEmulationBinding
+    private lateinit var secondaryDisplayManager: SecondaryDisplay
     private var romPath: String = ""
     private var runThread: Thread? = null
     private var isRunning = false
+
+    // True once a genuine second physical display is actually in use for
+    // the bottom screen (dual-screen handhelds like the AYN Thor or Odin
+    // 2 -- see SecondaryDisplay's doc comment). The DS's own two-screen
+    // layout maps onto that kind of hardware directly: top screen on the
+    // primary display, bottom (touch) screen on the real second one,
+    // instead of splitting a single display in two like the fallback
+    // stacked layout below does. Unlike EmulationActivity's fully
+    // user-configurable multi-layout system (top/bottom/hybrid/side-by-
+    // side, a per-setting choice backed by native screen-layout code),
+    // this is a single sensible default with no configuration UI --
+    // scoped down deliberately rather than rebuilding that whole system
+    // for DS.
+    private val usingSecondaryDisplay: Boolean
+        get() = secondaryDisplayManager.currentDisplayId != -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +70,22 @@ class DsEmulationActivity : AppCompatActivity() {
 
         NativeLibrary.sDsEmulationActivity = java.lang.ref.WeakReference(this)
 
+        secondaryDisplayManager = SecondaryDisplay(
+            this,
+            onSurfaceUpdate = { NativeLibrary.dsBottomSurfaceChanged(it) },
+            onSurfaceDestroy = { NativeLibrary.dsBottomSurfaceDestroyed() },
+            onTouch = { x, y, pressed -> onSecondaryDisplayTouch(x, y, pressed) },
+            onTouchMoved = { x, y -> onSecondaryDisplayTouch(x, y, true) }
+        )
+        secondaryDisplayManager.updateDisplay()
+        if (usingSecondaryDisplay) {
+            // The real second display's own Presentation provides the
+            // bottom screen now -- the embedded one would just be a
+            // redundant, confusing extra copy. Let the top screen use
+            // the whole primary display instead.
+            binding.surfaceDsBottom.visibility = View.GONE
+        }
+
         binding.surfaceDsTop.holder.addCallback(TopSurfaceCallback())
         binding.surfaceDsBottom.holder.addCallback(BottomSurfaceCallback())
         binding.surfaceDsBottom.setOnTouchListener { _, event -> onBottomScreenTouch(event) }
@@ -63,7 +96,19 @@ class DsEmulationActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopEmulation()
+        secondaryDisplayManager.releasePresentation()
+        secondaryDisplayManager.releaseVD()
         NativeLibrary.sDsEmulationActivity.clear()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        secondaryDisplayManager.releasePresentation()
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        secondaryDisplayManager.updateDisplay()
     }
 
     override fun onPause() {
@@ -78,6 +123,21 @@ class DsEmulationActivity : AppCompatActivity() {
         if (isRunning) {
             NativeLibrary.dsUnPauseEmulation()
         }
+    }
+
+    /** (x, y) in the secondary Presentation's raw SurfaceView pixel space. */
+    private fun onSecondaryDisplayTouch(x: Float, y: Float, pressed: Boolean) {
+        val display = secondaryDisplayManager.availableDisplays
+            .firstOrNull { it.displayId == secondaryDisplayManager.currentDisplayId }
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display?.getRealMetrics(metrics)
+        val width = metrics.widthPixels.takeIf { it > 0 } ?: kDsScreenWidth
+        val height = metrics.heightPixels.takeIf { it > 0 } ?: kDsScreenHeight
+
+        val dsX = (x * kDsScreenWidth / width).toInt().coerceIn(0, kDsScreenWidth - 1)
+        val dsY = (y * kDsScreenHeight / height).toInt().coerceIn(0, kDsScreenHeight - 1)
+        NativeLibrary.dsOnTouchEvent(dsX, dsY, pressed)
     }
 
     private fun startEmulationIfNeeded() {

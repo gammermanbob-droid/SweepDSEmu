@@ -20,7 +20,29 @@ import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.utils.Log
 
-class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
+/**
+ * Presents a SurfaceView on a genuine second physical display when one
+ * exists (dual-screen handhelds like the Odin 2 or AYN Thor -- the DS's
+ * own two-screen layout maps onto this kind of hardware directly, one
+ * real display per DS screen, rather than splitting a single display in
+ * two). [onSurfaceUpdate]/[onSurfaceDestroy] default to the 3DS bottom
+ * screen's JNI calls so [org.citra.citra_emu.activities.EmulationActivity]'s
+ * existing usage is unaffected; [org.citra.citra_emu.activities.DsEmulationActivity]
+ * passes the DS-specific ones instead.
+ */
+class SecondaryDisplay(
+    val context: Context,
+    private val onSurfaceUpdate: (android.view.Surface) -> Unit = { NativeLibrary.secondarySurfaceChanged(it) },
+    private val onSurfaceDestroy: () -> Unit = { NativeLibrary.secondarySurfaceDestroyed() },
+    // (x, y, pressed) in raw SurfaceView pixel space -- callers that need
+    // different coordinate scaling (e.g. DS's 256x192 core-space, versus
+    // the 3DS default below which passes raw pixels straight through to
+    // NativeLibrary and lets the core scale them) do that themselves.
+    private val onTouch: (Float, Float, Boolean) -> Unit =
+        { x, y, pressed -> NativeLibrary.onSecondaryTouchEvent(x, y, pressed) },
+    private val onTouchMoved: (Float, Float) -> Unit =
+        { x, y -> NativeLibrary.onSecondaryTouchMoved(x, y) }
+) : DisplayManager.DisplayListener {
     private var pres: SecondaryDisplayPresentation? = null
     private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private val vd: VirtualDisplay
@@ -45,14 +67,14 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
     fun updateSurface() {
         val surface = pres?.getSurfaceHolder()?.surface
         if (surface != null && surface.isValid) {
-            NativeLibrary.secondarySurfaceChanged(surface)
+            onSurfaceUpdate(surface)
         } else {
             Log.warning("SecondaryDisplay Attempted to update null or invalid surface")
         }
     }
 
     fun destroySurface() {
-        NativeLibrary.secondarySurfaceDestroyed()
+        onSurfaceDestroy()
     }
 
     private fun getSecondaryDisplays(): List<Display> {
@@ -118,7 +140,7 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
         releasePresentation()
 
         try {
-            pres = SecondaryDisplayPresentation(context, displayToUse!!, this)
+            pres = SecondaryDisplayPresentation(context, displayToUse!!, this, onTouch, onTouchMoved)
             pres?.show()
         }
         // catch BadTokenException and InvalidDisplayException,
@@ -157,7 +179,9 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
 class SecondaryDisplayPresentation(
     context: Context,
     display: Display,
-    val parent: SecondaryDisplay
+    val parent: SecondaryDisplay,
+    private val onTouch: (Float, Float, Boolean) -> Unit,
+    private val onTouchMoved: (Float, Float) -> Unit
 ) : Presentation(context, display) {
     private lateinit var surfaceView: SurfaceView
     private var touchscreenPointerId = -1
@@ -202,27 +226,20 @@ class SecondaryDisplayPresentation(
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                     if (touchscreenPointerId == -1) {
                         touchscreenPointerId = pointerId
-                        NativeLibrary.onSecondaryTouchEvent(
-                            event.getX(pointerIndex),
-                            event.getY(pointerIndex),
-                            true
-                        )
+                        onTouch(event.getX(pointerIndex), event.getY(pointerIndex), true)
                     }
                 }
 
                 MotionEvent.ACTION_MOVE -> {
                     val index = event.findPointerIndex(touchscreenPointerId)
                     if (index != -1) {
-                        NativeLibrary.onSecondaryTouchMoved(
-                            event.getX(index),
-                            event.getY(index)
-                        )
+                        onTouchMoved(event.getX(index), event.getY(index))
                     }
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
                     if (pointerId == touchscreenPointerId) {
-                        NativeLibrary.onSecondaryTouchEvent(0f, 0f, false)
+                        onTouch(0f, 0f, false)
                         touchscreenPointerId = -1
                     }
                 }
