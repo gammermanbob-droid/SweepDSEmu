@@ -396,6 +396,13 @@ target_include_directories(melonds_core PUBLIC
 if(MSVC)
     set(MELONDS_MSVC_COMPAT_H "${CMAKE_CURRENT_BINARY_DIR}/melonds_generated/melonds_msvc_compat.h")
     file(WRITE "${MELONDS_MSVC_COMPAT_H}" "#pragma once\n\
+// NOMINMAX must land before <intrin.h> drags in enough of the\n\
+// Windows SDK to define max()/min() as macros, which silently mangles\n\
+// every std::max/std::min call in melonDS's own source (e.g. turns\n\
+// \"std::max(a, b)\" into \"std::(...)\" wherever max() gets expanded).\n\
+#ifndef NOMINMAX\n\
+#define NOMINMAX\n\
+#endif\n\
 #include <intrin.h>\n\
 #ifndef __attribute__\n\
 #define __attribute__(x)\n\
