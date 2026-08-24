@@ -12,6 +12,17 @@ cmake_policy(SET CMP0063 NEW)
 # Allow conditions to be used in cmake_dependent_option
 cmake_policy(SET CMP0127 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0063 NEW)
+# CMP0091 NEW makes CMake apply the MSVC_RUNTIME_LIBRARY target
+# property to every source file's compile flags, including ASM_MASM
+# ones (cryptopp's src/core, src/random) — MSVC's assembler has no
+# concept of C runtime library selection and rejects the flag outright
+# ("MSVC_RUNTIME_LIBRARY value ... not known for this ASM compiler"),
+# failing CMake's generate step entirely. Nothing in this project
+# relies on CMP0091 NEW's property-based runtime selection, so keep
+# the legacy compiler-flag-based behavior instead.
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 OLD)
+endif()
 
 # Prefer building bundled dependencies as static instead of shared
 set(BUILD_SHARED_LIBS OFF)
