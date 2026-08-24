@@ -7,12 +7,28 @@ if [ "$GITHUB_REF_TYPE" == "tag" ]; then
 	export EXTRA_CMAKE_FLAGS=(-DENABLE_QT_UPDATE_CHECKER=ON)
 fi
 
+# libzip (vendored as a submodule, not through vcpkg) hard-requires a
+# findable zlib, but this project has no vcpkg.json manifest and no
+# vendored zlib copy of its own — nothing on a stock Windows runner
+# provides one otherwise. Install just zlib through vcpkg's classic
+# (non-manifest) mode and hint CMake at it directly via ZLIB_ROOT,
+# rather than wiring CMAKE_TOOLCHAIN_FILE: the toolchain file makes
+# vcpkg intercept every find_package() call, and the runner's default
+# package set also happens to include Zydis, which collides with this
+# project's own vendored Zydis copy (externals/dynarmic/externals).
+VCPKG_BIN="${VCPKG_INSTALLATION_ROOT:-$VCPKG_ROOT}"
+if [ -n "$VCPKG_BIN" ]; then
+	"$VCPKG_BIN/vcpkg" install zlib:x64-windows
+	ZLIB_HINT="$VCPKG_BIN/installed/x64-windows"
+fi
+
 cmake .. -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DENABLE_QT_TRANSLATION=ON \
     -DUSE_DISCORD_PRESENCE=ON \
+    ${ZLIB_HINT:+-DZLIB_ROOT="$ZLIB_HINT"} \
 	"${EXTRA_CMAKE_FLAGS[@]}"
 ninja
 ninja bundle
