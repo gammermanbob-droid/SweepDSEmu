@@ -11,16 +11,23 @@ fi
 # findable zlib, and melonDS (cmake/melonds.cmake) hard-requires a
 # findable zstd — but this project has no vcpkg.json manifest and
 # doesn't vendor either itself, so nothing on a stock Windows runner
-# provides them. Install just these two through vcpkg's classic
-# (non-manifest) mode and hint CMake at their install prefix, rather
-# than wiring CMAKE_TOOLCHAIN_FILE: the toolchain file makes vcpkg
-# intercept every find_package() call, and the runner's default
-# package set also happens to include Zydis, which collides with this
-# project's own vendored Zydis copy (externals/dynarmic/externals).
-VCPKG_BIN="${VCPKG_INSTALLATION_ROOT:-$VCPKG_ROOT}"
-if [ -n "$VCPKG_BIN" ]; then
-	"$VCPKG_BIN/vcpkg" install zlib:x64-windows zstd:x64-windows
-	VCPKG_INSTALLED="$VCPKG_BIN/installed/x64-windows"
+# provides them. On MSYS2, pacboy already installs both (see
+# .github/workflows/build.yml) onto the standard MinGW search paths,
+# so nothing extra is needed there. On plain MSVC, install just these
+# two through vcpkg's classic (non-manifest) mode and hint CMake at
+# their install prefix, rather than wiring CMAKE_TOOLCHAIN_FILE: the
+# toolchain file makes vcpkg intercept every find_package() call, and
+# its x64-windows triplet only produces MSVC-ABI binaries anyway (it
+# fails outright under MSYS2's Clang toolchain), and the runner's
+# default package set also happens to include Zydis, which collides
+# with this project's own vendored Zydis copy
+# (externals/dynarmic/externals).
+if [ -z "$MSYSTEM" ]; then
+	VCPKG_BIN="${VCPKG_INSTALLATION_ROOT:-$VCPKG_ROOT}"
+	if [ -n "$VCPKG_BIN" ]; then
+		"$VCPKG_BIN/vcpkg" install zlib:x64-windows zstd:x64-windows
+		VCPKG_INSTALLED="$VCPKG_BIN/installed/x64-windows"
+	fi
 fi
 
 cmake .. -G Ninja \
