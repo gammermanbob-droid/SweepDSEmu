@@ -14,7 +14,7 @@ endif()
 if (APPLE)
     set(DIST_DIR "../../dist/apple")
     set(APPLE_RESOURCES
-        "${DIST_DIR}/azahar.icns"
+        "${DIST_DIR}/sweepds.icns"
         "${DIST_DIR}/LaunchScreen.storyboard"
         "${DIST_DIR}/launch_logo.png"
     )
@@ -27,12 +27,12 @@ if (APPLE)
     set_target_properties(citra_meta PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST "${DIST_DIR}/Info.plist.in"
-        MACOSX_BUNDLE_BUNDLE_NAME "Azahar"
+        MACOSX_BUNDLE_BUNDLE_NAME "SweepDS Emu"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.azahar-emu.azahar"
         MACOSX_BUNDLE_BUNDLE_VERSION "${BUILD_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${BUILD_FULLNAME}"
         MACOSX_BUNDLE_LONG_VERSION_STRING "${BUILD_FULLNAME}"
-        MACOSX_BUNDLE_ICON_FILE "azahar.icns"
+        MACOSX_BUNDLE_ICON_FILE "sweepds.icns"
         RESOURCE "${APPLE_RESOURCES}"
     )
 

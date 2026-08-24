@@ -17,6 +17,7 @@
 #include <QFutureWatcher>
 #endif
 #include <QMainWindow>
+#include <QPointer>
 #include <QPushButton>
 #include <QString>
 #include <QTimer>
@@ -177,6 +178,12 @@ private:
 
     bool LoadROM(const QString& filename);
     void BootGame(const QString& filename);
+    // return_to_home_menu: true when this DS session was launched by a
+    // forwarder from the real emulated HOME Menu (which gets shut down to
+    // make room for it) — once the DS window closes, the HOME Menu is
+    // rebooted so the user lands back where they started.
+    void BootDSGame(const QString& filename, bool return_to_home_menu = false);
+    void BootHomeMenuForCurrentRegion();
     void ShutdownGame();
 
 #ifdef USE_DISCORD_PRESENCE
@@ -273,6 +280,7 @@ private slots:
     void OnMenuAmiiboAction();
     void OnMenuAmiiboFileAction();
     void OnConfigure();
+    void OnConfigureDSControls();
     void OnExportZipPass();
     void OnImportZipPass();
     void OnClearStreetPassConfig();
@@ -361,6 +369,11 @@ private:
 
     GRenderWindow* render_window;
     GRenderWindow* secondary_window;
+
+    // Owns itself (Qt::WA_DeleteOnClose) — this is just a weak handle
+    // so a second BootGame() call can close a still-open DS session
+    // instead of leaking a duplicate window.
+    QPointer<class DSPlayerWindow> ds_player_window;
 
     GameListPlaceholder* game_list_placeholder;
     LoadingScreen* loading_screen;

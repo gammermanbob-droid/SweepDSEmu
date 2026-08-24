@@ -11,6 +11,20 @@ namespace Service::NS {
 
 std::shared_ptr<Kernel::Process> LaunchTitle(Core::System& system, FS::MediaType media_type,
                                              u64 title_id) {
+    // DS forwarders are real CIAs so they show up as normal icons on the
+    // emulated HOME Menu, but their own 3DS code is a do-nothing stub. The
+    // HOME Menu launches titles through exactly this function (via
+    // AppletManager::StartApplication), never through the Qt-level
+    // BootGame(), so this is the only place that sees every in-emulation
+    // title switch and can redirect to the DS ROM instead. Returning
+    // nullptr here makes the caller treat this as a failed launch and call
+    // RequestShutdown(), which the frontend intercepts to boot the DS ROM
+    // (see GMainWindow::OnCoreError / System::ConsumeDSForwardPath).
+    if (std::string ds_rom = system.ResolveDSForwarder(title_id); !ds_rom.empty()) {
+        system.SetPendingDSForwardPath(std::move(ds_rom));
+        return nullptr;
+    }
+
     std::string path;
 
     if (media_type == FS::MediaType::GameCard) {

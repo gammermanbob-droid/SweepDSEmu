@@ -47,6 +47,7 @@ Thumbs.db
 
 # Python files
 *.pyc
+__pycache__/
 
 # Flatpak generated files
 .flatpak-builder/

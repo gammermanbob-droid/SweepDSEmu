@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for any JIT-compiled CPU core (dynarmic for 3DS,
+         melonDS's ARMJIT for DS) to write machine code into an
+         mmap(MAP_JIT) page on Apple Silicon — without this, the
+         mmap call itself succeeds, but the write that follows to
+         actually emit code into the page segfaults. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Homebrew-provided Qt/MoltenVK/etc. dylibs aren't signed by
+         Apple or with our (ad-hoc) identity; without this, loading
+         them can be blocked under library validation. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

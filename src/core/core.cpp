@@ -114,6 +114,9 @@ System::ResultStatus System::RunLoop(bool tight_loop) {
             return ResultStatus::ShutdownRequested;
         }
         Reset();
+        if (!pending_ds_forward_path.empty()) {
+            return ResultStatus::ShutdownRequested;
+        }
         return ResultStatus::Success;
     }
     case Signal::Shutdown:
@@ -753,6 +756,22 @@ void System::Reset() {
     if (!m_chainloadpath.empty()) {
         m_filepath = m_chainloadpath;
         m_chainloadpath.clear();
+    }
+
+    {
+        u64 program_id = 0;
+        auto loader = Loader::GetLoader(m_filepath);
+        if (loader && loader->ReadProgramId(program_id) == Loader::ResultStatus::Success) {
+            std::string ds_rom = ResolveDSForwarder(program_id);
+            if (!ds_rom.empty()) {
+                // Leave the system shut down (from the Shutdown() call above) and
+                // let the frontend take over: RunLoop()'s caller sees
+                // ShutdownRequested and, seeing a pending DS forward path, boots
+                // the DS ROM instead of treating this as a normal power-off.
+                SetPendingDSForwardPath(std::move(ds_rom));
+                return;
+            }
+        }
     }
 
     // Reload the system with the same setting

@@ -205,6 +205,35 @@ public:
     static constexpr int CanInsertRole = SortRole + 7;
 
     GameListItemPath() = default;
+
+    // For systems with no SMDH-equivalent to decode here — DS ROMs use
+    // a completely different, much older icon format (see
+    // util/nds_icon.h), decoded ahead of time by the caller rather
+    // than taught to this 3DS-specific constructor.
+    GameListItemPath(const QString& game_path, const QPixmap& icon) {
+        setData(type(), TypeRole);
+        setData(game_path, FullPathRole);
+        setData(qulonglong(0), ProgramIdRole);
+        setData(qulonglong(0), ExtdataIdRole);
+        setData(quint32(0), MediaTypeRole);
+        setData(quint32(0), CanInsertRole);
+
+        const auto icon_size_setting = UISettings::values.game_list_icon_size.GetValue();
+        if (icon_size_setting == UISettings::GameListIconSize::NoIcon) {
+            setData(QPixmap(), Qt::DecorationRole);
+            return;
+        }
+
+        const bool large = icon_size_setting == UISettings::GameListIconSize::LargeIcon;
+        const int dim = large ? 48 : 24;
+        if (!icon.isNull()) {
+            setData(icon.scaled(dim, dim, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                    Qt::DecorationRole);
+        } else {
+            setData(GetDefaultIcon(large), Qt::DecorationRole);
+        }
+    }
+
     GameListItemPath(const QString& game_path, std::span<const u8> smdh_data, u64 program_id,
                      u64 extdata_id, Service::FS::MediaType media_type, bool is_encrypted,
                      bool can_insert) {

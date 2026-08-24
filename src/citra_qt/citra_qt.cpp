@@ -44,6 +44,10 @@
 #include "citra_qt/applets/mii_selector.h"
 #include "citra_qt/applets/swkbd.h"
 #include "citra_qt/bootmanager.h"
+#include "citra_qt/configure_ds_controls.h"
+#include "citra_qt/ds_forwarder_registry.h"
+#include "citra_qt/ds_player_window.h"
+#include "core/core_factory.h"
 #include "citra_qt/camera/qt_multimedia_camera.h"
 #include "citra_qt/camera/still_image_camera.h"
 #include "citra_qt/citra_qt.h"
@@ -2342,6 +2346,7 @@ void GMainWindow::ConnectMenuEvents() {
     });
     connect_menu(ui->action_Configure, &GMainWindow::OnConfigure, QAction::PreferencesRole);
     connect_menu(ui->action_Configure_Current_Game, &GMainWindow::OnConfigurePerGame);
+    connect_menu(ui->action_Configure_DS_Controls, &GMainWindow::OnConfigureDSControls);
 
     // View
     connect_menu(ui->action_Single_Window_Mode, &GMainWindow::ToggleWindowMode);
@@ -2677,6 +2682,24 @@ bool GMainWindow::LoadROM(const QString& filename) {
 }
 
 void GMainWindow::BootGame(const QString& filename) {
+    if (MergedCore::CoreFactory::Detect(filename.toStdString()) == MergedCore::SystemKind::DS) {
+        BootDSGame(filename);
+        return;
+    }
+
+    // A DS forwarder's own 3DS code is a do-nothing stub (see
+    // ds_forwarder_registry.h) — this has to intercept before any of
+    // the normal 3DS boot machinery below ever touches it.
+    if (auto loader = Loader::GetLoader(filename.toStdString())) {
+        u64 program_id = 0;
+        loader->ReadProgramId(program_id);
+        const QString ds_rom = DSForwarderRegistry::ResolveForwarder(program_id);
+        if (!ds_rom.isEmpty()) {
+            BootDSGame(ds_rom);
+            return;
+        }
+    }
+
     if (emu_thread) {
         ShutdownGame();
     }
@@ -2831,6 +2854,40 @@ void GMainWindow::BootGame(const QString& filename) {
     }
 
     OnResumeGame(true);
+}
+
+void GMainWindow::BootDSGame(const QString& filename, bool return_to_home_menu) {
+    // DS titles run in their own self-contained window driven by
+    // MelonDSCore (see ds_player_window.h) rather than through
+    // Core::System/EmuThread/RendererVulkan — none of that 3DS-specific
+    // pipeline applies here, so this deliberately doesn't touch
+    // emu_thread, render_window, or anything else BootGame() drives.
+    if (ds_player_window) {
+        ds_player_window->close();
+    }
+
+    StoreRecentFile(filename);
+    ds_player_window = new DSPlayerWindow(filename);
+    if (return_to_home_menu) {
+        connect(ds_player_window, &QObject::destroyed, this,
+                &GMainWindow::BootHomeMenuForCurrentRegion);
+    }
+    ds_player_window->show();
+}
+
+void GMainWindow::BootHomeMenuForCurrentRegion() {
+    const auto current_region = Settings::values.region_value.GetValue();
+    for (u32 region = 0; region < Core::NUM_SYSTEM_TITLE_REGIONS; region++) {
+        if (current_region != Settings::REGION_VALUE_AUTO_SELECT &&
+            current_region != static_cast<int>(region)) {
+            continue;
+        }
+        const auto path = Core::GetHomeMenuNcchPath(region);
+        if (!path.empty() && FileUtil::Exists(path)) {
+            BootGame(QString::fromStdString(path));
+            return;
+        }
+    }
 }
 
 void GMainWindow::ShutdownGame() {
@@ -4423,6 +4480,15 @@ void GMainWindow::OnConfigure() {
     }
 }
 
+void GMainWindow::OnConfigureDSControls() {
+    ConfigureDSControls dialog(this);
+    dialog.exec();
+    // Bindings are picked up by the next DSPlayerWindow that's
+    // constructed (see its constructor) — no live session to refresh
+    // here, since a DS session running right now already has its own
+    // fixed key_to_button_ snapshot for the rest of that session.
+}
+
 void GMainWindow::OnExportZipPass() {
 	QString out_path = QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::UserDir));
 	QString fileName = QFileDialog::getSaveFileName(this, tr("Export ZipPass Data"),
@@ -5387,7 +5453,17 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         if (!can_continue || result == Core::System::ResultStatus::ShutdownRequested ||
             message_box.clickedButton() == abort_button) {
             if (emu_thread) {
+                // The real emulated HOME Menu launching a DS forwarder shuts
+                // the 3DS system down from deep inside NS::LaunchTitle (see
+                // core/hle/service/apt/ns.cpp) since that's the only place
+                // that sees every in-emulation title switch. If that's what
+                // just happened, boot the DS ROM instead of treating this
+                // like a normal crash/shutdown.
+                const QString ds_rom = QString::fromStdString(system.ConsumeDSForwardPath());
                 ShutdownGame();
+                if (!ds_rom.isEmpty()) {
+                    BootDSGame(ds_rom, /*return_to_home_menu=*/true);
+                }
                 return;
             }
         }
@@ -5769,12 +5845,12 @@ void GMainWindow::UpdateWindowTitle() {
     const QString full_name = QString::fromUtf8(Common::g_build_fullname);
 
     if (game_title.isEmpty()) {
-        setWindowTitle(QStringLiteral("Azahar %1").arg(full_name));
+        setWindowTitle(QStringLiteral("SweepDS Emu %1").arg(full_name));
     } else {
-        setWindowTitle(QStringLiteral("Azahar %1 | %2").arg(full_name, game_title));
-        render_window->setWindowTitle(
-            QStringLiteral("Azahar %1 | %2 | %3").arg(full_name, game_title, tr("Primary Window")));
-        secondary_window->setWindowTitle(QStringLiteral("Azahar %1 | %2 | %3")
+        setWindowTitle(QStringLiteral("SweepDS Emu %1 | %2").arg(full_name, game_title));
+        render_window->setWindowTitle(QStringLiteral("SweepDS Emu %1 | %2 | %3")
+                                           .arg(full_name, game_title, tr("Primary Window")));
+        secondary_window->setWindowTitle(QStringLiteral("SweepDS Emu %1 | %2 | %3")
                                              .arg(full_name, game_title, tr("Secondary Window")));
     }
 }
@@ -5980,6 +6056,13 @@ int LaunchQtFrontend(int argc, char* argv[]) {
 
     // Register Qt image interface
     system.RegisterImageInterface(std::make_shared<QtImageInterface>());
+
+    // Lets NS::LaunchTitle (core/hle/service/apt/ns.cpp) recognize DS
+    // forwarder CIAs when the real emulated HOME Menu launches one, and
+    // redirect to booting the DS ROM instead of the forwarder's stub code.
+    system.RegisterDSForwarderResolver([](u64 title_id) {
+        return DSForwarderRegistry::ResolveForwarder(title_id).toStdString();
+    });
 
     GMainWindow main_window(system);
 

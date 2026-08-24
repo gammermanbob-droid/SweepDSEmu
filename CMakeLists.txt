@@ -565,6 +565,8 @@ if (USE_SYSTEM_SOUNDTOUCH)
     target_include_directories(SoundTouch INTERFACE "${SOUNDTOUCH_INCLUDE_DIRS}")
 endif()
 
+include(cmake/melonds.cmake)
+
 add_subdirectory(src)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT citra_meta)

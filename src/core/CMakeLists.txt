@@ -34,6 +34,13 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     cheats/gateway_cheat.h
     core.cpp
     core.h
+    emulation_core.h
+    core_factory.h
+    core_factory.cpp
+    three_ds_core_adapter.h
+    three_ds_core_adapter.cpp
+    melonds_core/melon_ds_core.h
+    melonds_core/melon_ds_core.cpp
     core_timing.cpp
     core_timing.h
     dumping/backend.cpp
@@ -509,6 +516,7 @@ target_link_libraries(citra_core PUBLIC citra_common PRIVATE audio_core network 
 target_link_libraries(citra_core PRIVATE Boost::boost Boost::serialization Boost::iostreams httplib)
 target_link_libraries(citra_core PUBLIC dds-ktx PRIVATE cryptopp fmt lodepng open_source_archives)
 target_link_libraries(citra_core PRIVATE libzip::zip json-headers)
+target_link_libraries(citra_core PRIVATE melonds_core)
 
 if (ENABLE_WEB_SERVICE)
     target_link_libraries(citra_core PRIVATE web_service)

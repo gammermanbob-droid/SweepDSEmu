@@ -64,6 +64,14 @@ private:
     void AddFstEntriesToGameList(const std::string& dir_path, unsigned int recursion,
                                  GameListDir* parent_dir, Service::FS::MediaType media_type);
 
+    // Separate pass over the same configured directories looking for
+    // .nds ROMs, so DS titles show up as ordinary Game rows alongside
+    // 3DS titles instead of needing a dedicated DS-only folder setting.
+    // melonDS has no SMDH/program-ID/icon equivalent to read here, so
+    // these rows carry placeholder metadata (see game_list_worker.cpp).
+    void AddDSEntriesToGameList(const std::string& dir_path, unsigned int recursion,
+                                GameListDir* parent_dir);
+
     QVector<UISettings::GameDir>& game_dirs;
     const CompatibilityList& compatibility_list;
     const PlayTime::PlayTimeManager& play_time_manager;

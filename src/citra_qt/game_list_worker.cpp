@@ -17,6 +17,7 @@
 #include "citra_qt/game_list_p.h"
 #include "citra_qt/game_list_worker.h"
 #include "citra_qt/uisettings.h"
+#include "citra_qt/util/nds_icon.h"
 #include "common/common_paths.h"
 #include "common/file_util.h"
 #include "core/hle/service/am/am.h"
@@ -135,6 +136,48 @@ void GameListWorker::AddFstEntriesToGameList(const std::string& dir_path, unsign
     FileUtil::ForeachDirectoryEntry(nullptr, dir_path, callback);
 }
 
+void GameListWorker::AddDSEntriesToGameList(const std::string& dir_path, unsigned int recursion,
+                                            GameListDir* parent_dir) {
+    const auto callback = [this, recursion, parent_dir](u64* num_entries_out,
+                                                         const std::string& directory,
+                                                         const std::string& virtual_name) -> bool {
+        if (stop_processing) {
+            return false;
+        }
+
+        const std::string physical_name = directory + DIR_SEP + virtual_name;
+        const bool is_dir = FileUtil::IsDirectory(physical_name);
+        if (!is_dir) {
+            const QFileInfo file_info(QString::fromStdString(physical_name));
+            if (file_info.suffix().compare(QStringLiteral("nds"), Qt::CaseInsensitive) != 0) {
+                return true;
+            }
+
+            // melonDS has no SMDH/program-ID equivalent to read here
+            // (see melon_ds_core.cpp), but DS ROMs do carry their own,
+            // much older icon format in the header — decode that
+            // directly rather than falling back to a generic icon.
+            emit EntryReady(
+                {
+                    new GameListItemPath(QString::fromStdString(physical_name),
+                                         NdsIcon::Decode(physical_name)),
+                    new GameListItemCompat(QStringLiteral("99")),
+                    new GameListItem(QObject::tr("N/A")),
+                    new GameListItem(QStringLiteral("NDS")),
+                    new GameListItemSize(FileUtil::GetSize(physical_name)),
+                    new GameListItemPlayTime(0),
+                },
+                parent_dir);
+        } else if (is_dir && recursion > 0) {
+            AddDSEntriesToGameList(physical_name, recursion - 1, parent_dir);
+        }
+
+        return true;
+    };
+
+    FileUtil::ForeachDirectoryEntry(nullptr, dir_path, callback);
+}
+
 void GameListWorker::run() {
     stop_processing = false;
     for (UISettings::GameDir& game_dir : game_dirs) {
@@ -150,13 +193,27 @@ void GameListWorker::run() {
                     "Nintendo "
                     "3DS/00000000000000000000000000000000/00000000000000000000000000000000/title/"
                     "00040002");
+            // Some homebrew (e.g. TWiLightMenu++) installs its CIA under the System
+            // Applet title category so it can hijack an applet slot on real hardware.
+            // Azahar has no applet-slot UI for that trick to hook into, so list these
+            // here instead — otherwise a "successfully installed" applet CIA never
+            // appears anywhere for the user to actually launch.
+            QString applets_path =
+                QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)) +
+                QStringLiteral(
+                    "Nintendo "
+                    "3DS/00000000000000000000000000000000/00000000000000000000000000000000/title/"
+                    "00048004");
             watch_list.append(games_path);
             watch_list.append(demos_path);
+            watch_list.append(applets_path);
             auto* const game_list_dir = new GameListDir(game_dir, GameListItemType::InstalledDir);
             emit DirEntryReady(game_list_dir);
             AddFstEntriesToGameList(games_path.toStdString(), 2, game_list_dir,
                                     Service::FS::MediaType::SDMC);
             AddFstEntriesToGameList(demos_path.toStdString(), 2, game_list_dir,
+                                    Service::FS::MediaType::SDMC);
+            AddFstEntriesToGameList(applets_path.toStdString(), 2, game_list_dir,
                                     Service::FS::MediaType::SDMC);
         } else if (game_dir.path == QStringLiteral("SYSTEM")) {
             QString path =
@@ -173,6 +230,8 @@ void GameListWorker::run() {
             emit DirEntryReady(game_list_dir);
             AddFstEntriesToGameList(game_dir.path.toStdString(), game_dir.deep_scan ? 256 : 0,
                                     game_list_dir, Service::FS::MediaType::GameCard);
+            AddDSEntriesToGameList(game_dir.path.toStdString(), game_dir.deep_scan ? 256 : 0,
+                                   game_list_dir);
         }
     }
 

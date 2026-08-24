@@ -95,7 +95,14 @@ if (BUNDLE_TARGET_EXECUTE)
 
             # Bundling libraries can rewrite path information and break code signatures of system libraries.
             # Perform an ad-hoc re-signing on the whole app bundle to fix this.
-            execute_process(COMMAND codesign --deep -fs - "${executable_path}"
+            # --entitlements grants JIT-compiled CPU cores (dynarmic,
+            # melonDS's ARMJIT) permission to write into mmap(MAP_JIT)
+            # pages on Apple Silicon, and allows loading the
+            # Homebrew-provided (not Apple/us-signed) Qt/MoltenVK
+            # dylibs under library validation. See dist/apple/entitlements.plist.
+            execute_process(COMMAND codesign --deep -fs -
+                            --entitlements "${SOURCE_PATH}/dist/apple/entitlements.plist"
+                            "${executable_path}"
                             RESULT_VARIABLE codesign_result)
             if (NOT codesign_result EQUAL "0")
                 message(FATAL_ERROR "codesign failed: ${codesign_result}")

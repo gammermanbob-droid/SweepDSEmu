@@ -17,6 +17,14 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     applets/swkbd.h
     bootmanager.cpp
     bootmanager.h
+    ds_player_window.cpp
+    ds_player_window.h
+    ds_controls_config.cpp
+    ds_controls_config.h
+    ds_forwarder_registry.cpp
+    ds_forwarder_registry.h
+    configure_ds_controls.cpp
+    configure_ds_controls.h
     compatibility_list.cpp
     compatibility_list.h
     camera/camera_util.cpp
@@ -191,6 +199,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     user_data_migration.h
     util/clickable_label.cpp
     util/clickable_label.h
+    util/nds_icon.cpp
+    util/nds_icon.h
     util/graphics_device_info.cpp
     util/graphics_device_info.h
     util/sequence_dialog/sequence_dialog.cpp
@@ -209,6 +219,8 @@ if (APPLE)
   target_sources(citra_qt PUBLIC
     qt_swizzle.h
     qt_swizzle.mm
+    util/metal_util.h
+    util/metal_util.mm
   )
 endif()
 

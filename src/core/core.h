@@ -353,6 +353,40 @@ public:
                (mic_permission_granted = mic_permission_func());
     }
 
+    /// Lets the frontend register a resolver from 3DS title ID to an
+    /// absolute DS ROM path, for titles that are actually DS forwarders
+    /// (see citra_qt/ds_forwarder_registry.h). Checked whenever the
+    /// emulated console is about to switch titles in-process (i.e. the
+    /// real emulated HOME Menu launching an app) so that path can be
+    /// handed to the frontend to boot in melonDS instead of the normal
+    /// 3DS boot flow, which would just run the forwarder's do-nothing
+    /// stub code.
+    void RegisterDSForwarderResolver(const std::function<std::string(u64)>& resolver) {
+        ds_forwarder_resolver = resolver;
+    }
+
+    // Empty if title_id isn't a registered DS forwarder, or no resolver has
+    // been registered (e.g. non-Qt frontends).
+    [[nodiscard]] std::string ResolveDSForwarder(u64 title_id) const {
+        return ds_forwarder_resolver ? ds_forwarder_resolver(title_id) : std::string();
+    }
+
+    // Called by NS::LaunchTitle when ResolveDSForwarder found a match, so the
+    // frontend can pick it up once the resulting shutdown reaches it.
+    void SetPendingDSForwardPath(std::string path) {
+        pending_ds_forward_path = std::move(path);
+    }
+
+    // Non-empty only right after a title switch redirected into a DS
+    // forwarder; consumed (and cleared) once by the frontend after a
+    // ShutdownRequested RunLoop result so a normal shutdown isn't
+    // accidentally treated as one.
+    [[nodiscard]] std::string ConsumeDSForwardPath() {
+        std::string path = std::move(pending_ds_forward_path);
+        pending_ds_forward_path.clear();
+        return path;
+    }
+
     enum class SaveStateStatus {
         NONE,
         LOADING,
@@ -522,6 +556,9 @@ private:
 
     std::function<bool()> mic_permission_func;
     bool mic_permission_granted = false;
+
+    std::function<std::string(u64)> ds_forwarder_resolver;
+    std::string pending_ds_forward_path;
 
     boost::optional<Service::APT::DeliverArg> restore_deliver_arg;
     boost::optional<Service::APT::SysMenuArg> restore_sys_menu_arg;
