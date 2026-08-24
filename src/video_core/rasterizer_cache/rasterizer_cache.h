@@ -588,8 +588,15 @@ SurfaceId RasterizerCache<T>::GetTextureSurface(const Pica::Texture::TextureInfo
     const u32 min_height = info.height >> max_level;
     if (min_width % 8 != 0 || min_height % 8 != 0) {
         if (min_width % 4 != 0 || min_height % 4 != 0) {
-            LOG_CRITICAL(HW_GPU, "Texture size ({}x{}) is not multiple of 4", min_width,
-                         min_height);
+            // Same handled-edge-case fallback as the null-address check
+            // above (skip the geometry via a null surface) — not
+            // actually an error, so this doesn't warrant CRITICAL. Some
+            // titles (e.g. RetroArch's 3DS UI) hit this legitimately on
+            // every single frame for small UI textures; logging it at
+            // CRITICAL that often was enough overhead on its own to
+            // make the app appear to hang indefinitely without ever
+            // actually being stuck.
+            LOG_TRACE(HW_GPU, "Texture size ({}x{}) is not multiple of 4", min_width, min_height);
             return NULL_SURFACE_ID;
         }
         const auto [src_surface_id, rect] =
