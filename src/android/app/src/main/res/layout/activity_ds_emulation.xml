@@ -27,7 +27,7 @@
     </LinearLayout>
 
     <!-- Touch button overlay populated programmatically in
-         DsEmulationActivity -- DS has few enough buttons (A/B/X/Y, L/R,
+         DsEmulationActivity: DS has few enough buttons (A/B/X/Y, L/R,
          Start/Select, D-pad) that plain positioned Buttons are simpler
          and lower-risk than reworking InputOverlay's 3DS-specific bitmap
          drawable system to also understand DS's button set. -->
