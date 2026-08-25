@@ -177,7 +177,10 @@ void CopyDirectoryRecursive(const fs::path& target, const fs::path& link) {
         if (it->is_directory(ec)) {
             fs::create_directories(dst_path, ec);
         } else {
-            fs::create_directories(dst_path.parent_path(), ec);
+            // recursive_directory_iterator always visits a directory
+            // before its children, so dst_path's parent was already
+            // created above when we visited it -- no need to redundantly
+            // stat/create it again for every single file.
             fs::copy_file(src_path, dst_path, fs::copy_options::update_existing, ec);
         }
         if (ec) {
@@ -286,6 +289,20 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // session — g_console_powered_off is a single global (see its
     // definition), not scoped to a particular NDS instance.
     melonDS::Platform::g_console_powered_off.store(false, std::memory_order_relaxed);
+
+    // BuildHomebrewSDCardRoot() walks and syncs the user's whole roms/
+    // _nds/moonshl2 tree on every call — expensive on Android's
+    // FUSE-mediated storage with a sizeable ROM library. The DSi-NAND
+    // path below and the NDS-cart path further down both used to call
+    // it independently (identical work, done twice, every single
+    // boot); cache it here so it only actually runs once per Load().
+    std::optional<std::string> cached_homebrew_sdcard_root;
+    auto get_homebrew_sdcard_root = [&cached_homebrew_sdcard_root]() -> const std::string& {
+        if (!cached_homebrew_sdcard_root) {
+            cached_homebrew_sdcard_root = BuildHomebrewSDCardRoot().string();
+        }
+        return *cached_homebrew_sdcard_root;
+    };
 
     melonDS::NDSArgs args{};
 
@@ -401,7 +418,7 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
                 ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "dsi_sdcard.img").string(),
                 0, // auto-size from the source directory's contents
                 false,
-                BuildHomebrewSDCardRoot().string(),
+                get_homebrew_sdcard_root(),
             }),
             false, // DSPHLE — the DSP is emulated separately from Teak DSi_DSP; leave off for now
         };
@@ -443,13 +460,27 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // persistent FAT image seeded from — and synced back to — just the
     // real subfolders a DS homebrew menu actually needs (see
     // BuildHomebrewSDCardRoot()), not the user's whole 3DS library.
+    //
+    // Retail carts never consult SDCard at all (see the ParseROM
+    // comment above), so building/syncing it for them was pure waste —
+    // skip it entirely unless the ROM's own header says it's homebrew,
+    // rather than paying for a full roms/ tree sync on every single
+    // retail game boot.
     melonDS::NDSCart::NDSCartArgs cart_args{};
-    cart_args.SDCard = melonDS::FATStorageArgs{
-        ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img").string(),
-        0, // auto-size from the source directory's contents
-        false,
-        BuildHomebrewSDCardRoot().string(),
-    };
+    bool rom_is_homebrew = false;
+    if (romdata.size() >= sizeof(melonDS::NDSHeader)) {
+        melonDS::NDSHeader header{};
+        std::memcpy(&header, romdata.data(), sizeof(header));
+        rom_is_homebrew = header.IsHomebrew();
+    }
+    if (rom_is_homebrew) {
+        cart_args.SDCard = melonDS::FATStorageArgs{
+            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img").string(),
+            0, // auto-size from the source directory's contents
+            false,
+            get_homebrew_sdcard_root(),
+        };
+    }
 
     auto cart = melonDS::NDSCart::ParseROM(
         std::move(rombuffer), static_cast<melonDS::u32>(romdata.size()), nullptr,
