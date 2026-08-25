@@ -20,11 +20,21 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
-#include <dlfcn.h>
 #include <filesystem>
 #include <mutex>
 #include <semaphore>
 #include <thread>
+
+// dlopen/dlsym/dlclose (POSIX) have no equivalent on Windows -- MSYS2's
+// own clang64 toolchain doesn't ship a dlfcn.h shim, so this has to
+// branch to the Win32 LoadLibrary/GetProcAddress/FreeLibrary API
+// instead (see DynamicLibrary_Load's own comment for why this exists
+// at all).
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include "Platform.h"
 #include "SPI_Firmware.h"
@@ -425,18 +435,30 @@ float Addon_MotionQuery(MotionQueryType /*type*/, void* /*userdata*/) {
 // either -- it's just as correct on macOS/Linux, where nothing
 // actually calls it with a real library name today.
 DynamicLibrary* DynamicLibrary_Load(const char* lib) {
+#if defined(_WIN32)
+    return reinterpret_cast<DynamicLibrary*>(LoadLibraryA(lib));
+#else
     return reinterpret_cast<DynamicLibrary*>(dlopen(lib, RTLD_NOW | RTLD_LOCAL));
+#endif
 }
 void DynamicLibrary_Unload(DynamicLibrary* lib) {
     if (lib) {
+#if defined(_WIN32)
+        FreeLibrary(reinterpret_cast<HMODULE>(lib));
+#else
         dlclose(reinterpret_cast<void*>(lib));
+#endif
     }
 }
 void* DynamicLibrary_LoadFunction(DynamicLibrary* lib, const char* name) {
     if (!lib) {
         return nullptr;
     }
+#if defined(_WIN32)
+    return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(lib), name));
+#else
     return dlsym(reinterpret_cast<void*>(lib), name);
+#endif
 }
 
 } // namespace melonDS::Platform
