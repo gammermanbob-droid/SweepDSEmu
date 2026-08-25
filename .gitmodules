@@ -112,3 +112,6 @@
 [submodule "externals/Anylinux-AppImages"]
 	path = externals/Anylinux-AppImages
 	url = https://github.com/pkgforge-dev/Anylinux-AppImages.git
+[submodule "homebrew/pcsx_rearmed_3ds/external/pcsx_rearmed"]
+	path = homebrew/pcsx_rearmed_3ds/external/pcsx_rearmed
+	url = https://github.com/libretro/pcsx_rearmed.git

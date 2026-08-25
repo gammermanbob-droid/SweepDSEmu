@@ -232,6 +232,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Free disk space
+        # This job now packages three flavors (vanilla, googlePlay, thor)
+        # in one run instead of two -- packageXRelease has been failing
+        # intermittently with a bare "IncrementalSplitterRunnable" error
+        # and no stack trace, cycling between whichever flavor's package
+        # task runs when the runner's ~14GB of free disk finally gives
+        # out. GitHub's runner images ship many multi-GB toolchains
+        # (.NET, Haskell, unused Android system images, etc.) that this
+        # job never touches; clearing them out is the standard fix for
+        # this failure signature on GitHub-hosted Android CI.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost \
+            /usr/local/lib/android/sdk/system-images \
+            /usr/local/lib/android/sdk/emulator
+          df -h /
       - name: Set up cache
         uses: actions/cache@v4
         with:
