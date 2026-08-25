@@ -211,6 +211,19 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = settingsGetSkipLines() ? "enabled" : "disabled";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_cd_readahead") == 0) {
+            // Default is 12 sectors (~28KB) -- a 3DS's SD card has real
+            // seek latency, and a bigger read-ahead buffer means fewer
+            // individual seeks for the same amount of disc data, which
+            // should help both the initial load (reading the boot
+            // executable/BIOS data) and in-game stalls alike. 64 sectors
+            // is ~150KB, trivial against this app's own 96/178MB
+            // memory budget (see package_cia.py) -- nowhere near the
+            // 333000 "read the whole disc" option this core disables
+            // outright on 3DS for exactly that RAM-cost reason.
+            var->value = "64";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 

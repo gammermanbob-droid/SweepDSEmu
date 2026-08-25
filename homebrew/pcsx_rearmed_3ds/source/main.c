@@ -151,6 +151,16 @@ int main(void) {
         if (!gamePath) {
             break; // user chose to quit from the browser
         }
+
+        // coreLoad() below is a single big blocking call (disc image
+        // I/O, plugin setup, BIOS boot) with nothing drawn until the
+        // first emulated frame -- without this, the screen just
+        // freezes on the last browser frame the instant a game is
+        // tapped, which reads as the app hanging rather than loading.
+        videoBeginFrame(false);
+        videoDrawMenuText("Loading...", 128, 108, 0.6f);
+        videoEndFrame();
+
         runGame(gamePath);
         free(gamePath);
     }
