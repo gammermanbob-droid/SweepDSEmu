@@ -138,6 +138,19 @@ static bool decodeUntilFrame(void) {
 }
 
 bool introVideoInit(void) {
+    // Disabled for now -- this hung the whole app on real hardware
+    // (not just a failed/skipped intro: nothing loaded at all, not
+    // even the fallback boot screen), and an exheader fix for the
+    // most likely cause (missing mvd:STD service access -- see
+    // package_cia.py) made no observed difference, meaning either
+    // that wasn't the actual cause or there's a second problem behind
+    // it. Bailing out before anything below runs (no APT_CheckNew3DS,
+    // no romfs read, no MVD calls at all) rules this file out entirely
+    // as a variable while that gets root-caused for real, rather than
+    // shipping another guess against hardware nobody in this
+    // conversation can directly test on.
+    return false;
+
     bool isNew3ds = false;
     if (R_FAILED(APT_CheckNew3DS(&isNew3ds)) || !isNew3ds) {
         return false;
