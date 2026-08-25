@@ -17,14 +17,37 @@
 #include "libretro.h"
 #include "psx3ds.h"
 
+int16_t g_psxAnalog[4];
+
 static u32 s_held;
 static u32 s_down;
 static bool s_pauseChordLatched;
+static bool s_touchWasHeld;
+static touchPosition s_touch;
+
+// The 3DS Circle Pad's dx/dy range is documented as roughly +/-156 --
+// scale that up to the full int16 range retro_input_state_t expects
+// for RETRO_DEVICE_ANALOG axes.
+static int16_t scaleCirclePadAxis(s16 raw) {
+    long scaled = (long)raw * 32767 / 156;
+    if (scaled > 32767) scaled = 32767;
+    if (scaled < -32767) scaled = -32767;
+    return (int16_t)scaled;
+}
 
 void inputPoll(void) {
     hidScanInput();
     s_held = hidKeysHeld();
     s_down = hidKeysDown();
+
+    hidTouchRead(&s_touch);
+
+    circlePosition circle;
+    hidCircleRead(&circle);
+    g_psxAnalog[PSX_ANALOG_LEFT_X] = scaleCirclePadAxis(circle.dx);
+    // 3DS's Y axis is inverted relative to PSX's (up = positive on
+    // Circle Pad, up = negative for a PSX analog stick).
+    g_psxAnalog[PSX_ANALOG_LEFT_Y] = scaleCirclePadAxis(-circle.dy);
 
     g_psxPad[RETRO_DEVICE_ID_JOYPAD_UP] = (s_held & KEY_DUP) != 0;
     g_psxPad[RETRO_DEVICE_ID_JOYPAD_DOWN] = (s_held & KEY_DDOWN) != 0;
@@ -74,4 +97,19 @@ bool inputMenuDownPressed(void) {
 
 bool inputMenuSettingsPressed(void) {
     return (s_down & KEY_X) != 0;
+}
+
+bool inputTouchTapped(int* x, int* y) {
+    // touchPosition reads (0,0) when the screen isn't being touched --
+    // there's no separate "is touching" flag in libctru's basic HID
+    // API, so track the previous frame's state ourselves to only fire
+    // on the actual press, not every frame the finger stays down.
+    bool touching = s_touch.px != 0 || s_touch.py != 0;
+    bool tapped = touching && !s_touchWasHeld;
+    s_touchWasHeld = touching;
+    if (tapped) {
+        *x = s_touch.px;
+        *y = s_touch.py;
+    }
+    return tapped;
 }

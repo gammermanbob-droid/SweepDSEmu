@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "psx3ds.h"
+#include "settings.h"
 
 // Covers every PS1 output resolution pcsx_rearmed can produce
 // (max effectively 640x480) with headroom to spare; must be a
@@ -151,22 +152,46 @@ void videoPresentGameFrame(const PsxFrame* frame) {
     s_haveFrame = true;
 }
 
-void videoBeginFrame(void) {
+static void drawGameImage(float screenWidth) {
+    if (!s_haveFrame) {
+        return;
+    }
+    // Scale the PS1's (up to) 640x480 4:3 image to fill the target
+    // screen's width, letterboxed to preserve aspect ratio -- the top
+    // screen is 400px wide, the bottom 320px, so this has to take the
+    // actual target width rather than assuming top.
+    float scale = screenWidth / s_subtex.width;
+    float drawH = s_subtex.height * scale;
+    float y = (240.0f - drawH) / 2.0f;
+    C2D_DrawImageAt(s_gameImage, 0.0f, y, 0.5f, NULL, scale, scale);
+}
+
+// gameplayActive selects which of the two screens the live game image
+// draws to (see settingsGetDisplayOnBottom) -- irrelevant for the file
+// browser/pause/settings screens (pass false there), which always show
+// menu text on the bottom screen and, if set, the last game frame as a
+// static backdrop on top, regardless of this setting: that setting is
+// specifically about where actively-playing gameplay goes, and mixing
+// it into the menu screens would fight with the menu text this same
+// bottom screen needs to show there.
+void videoBeginFrame(bool gameplayActive) {
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
-    C2D_TargetClear(s_top, C2D_Color32(0, 0, 0, 255));
-    C2D_SceneBegin(s_top);
-    if (s_haveFrame) {
-        // Scale the PS1's (up to) 640x480 4:3 image to fill the 3DS top
-        // screen's 400px width, letterboxed to preserve aspect ratio.
-        float scale = 400.0f / s_subtex.width;
-        float drawH = s_subtex.height * scale;
-        float y = (240.0f - drawH) / 2.0f;
-        C2D_DrawImageAt(s_gameImage, 0.0f, y, 0.5f, NULL, scale, scale);
-    }
+    if (gameplayActive && settingsGetDisplayOnBottom()) {
+        C2D_TargetClear(s_top, C2D_Color32(0, 0, 0, 255));
+        C2D_SceneBegin(s_top);
 
-    C2D_TargetClear(s_bottom, C2D_Color32(20, 20, 30, 255));
-    C2D_SceneBegin(s_bottom);
+        C2D_TargetClear(s_bottom, C2D_Color32(0, 0, 0, 255));
+        C2D_SceneBegin(s_bottom);
+        drawGameImage(320.0f);
+    } else {
+        C2D_TargetClear(s_top, C2D_Color32(0, 0, 0, 255));
+        C2D_SceneBegin(s_top);
+        drawGameImage(400.0f);
+
+        C2D_TargetClear(s_bottom, C2D_Color32(20, 20, 30, 255));
+        C2D_SceneBegin(s_bottom);
+    }
 }
 
 void videoDrawMenuText(const char* text, float x, float y, float scale) {
@@ -174,6 +199,18 @@ void videoDrawMenuText(const char* text, float x, float y, float scale) {
     C2D_TextFontParse(&c2dText, s_font, s_textBuf, text);
     C2D_TextOptimize(&c2dText);
     C2D_DrawText(&c2dText, C2D_WithColor, x, y, 0.5f, scale, scale, C2D_Color32(255, 255, 255, 255));
+}
+
+// The touch-screen "ANALOG" toggle shown during gameplay -- always on
+// the bottom (only touch-capable) screen, positioned bottom-center to
+// match where the physical HOME button sits just below a real 3DS's
+// bottom screen. Caller (main.c) must have already selected the bottom
+// screen's scene via videoBeginFrame(true) before calling this.
+void videoDrawAnalogToggle(bool enabled) {
+    C2D_SceneBegin(s_bottom); // in case drawGameImage() above left the top screen selected
+    videoDrawMenuText("ANALOG", kAnalogToggleX - 24, kAnalogToggleY - kAnalogToggleRadius - 16, 0.4f);
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.5f, kAnalogToggleRadius,
+        enabled ? C2D_Color32(60, 200, 90, 220) : C2D_Color32(80, 80, 90, 200));
 }
 
 void videoEndFrame(void) {

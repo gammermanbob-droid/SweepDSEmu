@@ -33,6 +33,13 @@ static char s_currentGameName[128];
 #define SYSTEM_DIR "sdmc:/3ds/pcsx_rearmed_3ds/system"
 #define SAVE_DIR   "sdmc:/3ds/pcsx_rearmed_3ds/saves"
 
+// Not in libretro.h itself -- pcsx_rearmed's frontend/libretro.c
+// defines these locally as RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG,
+// N) and switches on the exact value in retro_set_controller_port_device,
+// so replicating the same macro application here is enough without
+// needing pcsx_rearmed's own header.
+#define RETRO_DEVICE_PSE_DUALSHOCK RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1)
+
 static void logPrintf(enum retro_log_level level, const char* fmt, ...) {
     (void)level;
     va_list ap;
@@ -160,11 +167,20 @@ static void inputPollCallback(void) {
 }
 
 static int16_t inputStateCallback(unsigned port, unsigned device, unsigned index, unsigned id) {
-    (void)index;
-    if (port != 0 || device != RETRO_DEVICE_JOYPAD || id >= PSX_MAX_BUTTONS) {
+    if (port != 0) {
         return 0;
     }
-    return g_psxPad[id] ? 1 : 0;
+    if (device == RETRO_DEVICE_JOYPAD) {
+        return (id < PSX_MAX_BUTTONS && g_psxPad[id]) ? 1 : 0;
+    }
+    if (device == RETRO_DEVICE_ANALOG) {
+        // index selects which stick (LEFT/RIGHT), id selects X/Y --
+        // g_psxAnalog is laid out as [LEFT_X, LEFT_Y, RIGHT_X, RIGHT_Y],
+        // exactly index*2 + id.
+        unsigned axis = index * 2 + id;
+        return axis < 4 ? g_psxAnalog[axis] : 0;
+    }
+    return 0;
 }
 
 static void setCurrentGameNameFromPath(const char* path) {
@@ -206,7 +222,13 @@ bool coreLoad(const char* path) {
     retro_get_system_av_info(&avInfo);
     s_targetFps = avInfo.timing.fps > 0 ? avInfo.timing.fps : 60.0;
     s_sampleRate = avInfo.timing.sample_rate > 0 ? avInfo.timing.sample_rate : 44100.0;
+
+    coreSetAnalogMode(settingsGetAnalogMode());
     return true;
+}
+
+void coreSetAnalogMode(bool enabled) {
+    retro_set_controller_port_device(0, enabled ? RETRO_DEVICE_PSE_DUALSHOCK : RETRO_DEVICE_JOYPAD);
 }
 
 void coreUnload(void) {

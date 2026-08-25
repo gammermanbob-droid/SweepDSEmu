@@ -9,6 +9,7 @@
 // menu/pause implementation instead.
 
 #include <3ds.h>
+#include <math.h>
 #include <stdlib.h>
 
 #include "menu.h"
@@ -20,6 +21,7 @@ static void runGame(const char* path) {
         return;
     }
 
+    bool analogEnabled = settingsGetAnalogMode();
     osSetSpeedupEnable(true); // New 3DS CPU clock boost while actually playing
     bool quit = false;
     while (!quit && aptMainLoop()) {
@@ -30,13 +32,28 @@ static void runGame(const char* path) {
             continue;
         }
 
+        // The ANALOG toggle is always live during gameplay (not tucked
+        // away in the settings screen) -- matches a real DualShock's
+        // own physical ANALOG button, which works the same way whether
+        // or not a menu is open.
+        int tx, ty;
+        if (inputTouchTapped(&tx, &ty)) {
+            float dx = tx - kAnalogToggleX, dy = ty - kAnalogToggleY;
+            if (sqrtf(dx * dx + dy * dy) <= kAnalogToggleRadius) {
+                analogEnabled = !analogEnabled;
+                settingsSetAnalogMode(analogEnabled);
+                coreSetAnalogMode(analogEnabled);
+            }
+        }
+
         // coreRunFrame() -> retro_run() -> the retro_video_refresh
         // callback -> videoPresentGameFrame() runs synchronously inside
         // this call, uploading the new frame into s_gameTex before we
         // draw it below.
         coreRunFrame();
 
-        videoBeginFrame();
+        videoBeginFrame(true);
+        videoDrawAnalogToggle(analogEnabled);
         videoEndFrame();
     }
     osSetSpeedupEnable(false);

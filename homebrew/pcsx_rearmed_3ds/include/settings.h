@@ -18,3 +18,17 @@ void settingsLoad(void);
 // its boot logo/splash) even if a real dump is present.
 bool settingsGetForceHle(void);
 void settingsSetForceHle(bool force);
+
+// Which screen the game's picture renders on -- false (default): top
+// screen, matching every other emulator on this project (DS, mGBA).
+// true: bottom (touch) screen, for players who'd rather have the
+// bigger/centered screen free for something else or just prefer it.
+bool settingsGetDisplayOnBottom(void);
+void settingsSetDisplayOnBottom(bool bottom);
+
+// Whether the emulated pad reports as a DualShock (analog sticks, PSX's
+// own analog-mode games) instead of a plain digital pad. Off by
+// default -- most PS1 games work fine digital-only, and turning this on
+// changes how some games read input entirely.
+bool settingsGetAnalogMode(void);
+void settingsSetAnalogMode(bool enabled);

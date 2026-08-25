@@ -12,9 +12,13 @@
 #define SETTINGS_PATH SETTINGS_DIR "/settings.ini"
 
 static bool s_forceHle;
+static bool s_displayOnBottom;
+static bool s_analogMode;
 
 void settingsLoad(void) {
     s_forceHle = false;
+    s_displayOnBottom = false;
+    s_analogMode = false;
 
     FILE* f = fopen(SETTINGS_PATH, "r");
     if (!f) {
@@ -24,8 +28,15 @@ void settingsLoad(void) {
     while (fgets(line, sizeof(line), f)) {
         char key[64];
         int value;
-        if (sscanf(line, "%63[^=]=%d", key, &value) == 2 && strcmp(key, "force_hle") == 0) {
+        if (sscanf(line, "%63[^=]=%d", key, &value) != 2) {
+            continue;
+        }
+        if (strcmp(key, "force_hle") == 0) {
             s_forceHle = value != 0;
+        } else if (strcmp(key, "display_on_bottom") == 0) {
+            s_displayOnBottom = value != 0;
+        } else if (strcmp(key, "analog_mode") == 0) {
+            s_analogMode = value != 0;
         }
     }
     fclose(f);
@@ -39,6 +50,8 @@ static void save(void) {
         return;
     }
     fprintf(f, "force_hle=%d\n", s_forceHle ? 1 : 0);
+    fprintf(f, "display_on_bottom=%d\n", s_displayOnBottom ? 1 : 0);
+    fprintf(f, "analog_mode=%d\n", s_analogMode ? 1 : 0);
     fclose(f);
 }
 
@@ -48,5 +61,23 @@ bool settingsGetForceHle(void) {
 
 void settingsSetForceHle(bool force) {
     s_forceHle = force;
+    save();
+}
+
+bool settingsGetDisplayOnBottom(void) {
+    return s_displayOnBottom;
+}
+
+void settingsSetDisplayOnBottom(bool bottom) {
+    s_displayOnBottom = bottom;
+    save();
+}
+
+bool settingsGetAnalogMode(void) {
+    return s_analogMode;
+}
+
+void settingsSetAnalogMode(bool enabled) {
+    s_analogMode = enabled;
     save();
 }

@@ -107,6 +107,11 @@ static void scanGames(void) {
     closedir(root);
 }
 
+// Every list/menu screen in this file uses the same row layout: a
+// touch tap anywhere in [rowY, rowY+kRowHeight) selects that row --
+// full screen width, no need to match text extents exactly.
+#define kRowHeight 18.0f
+
 char* menuBrowseForGame(void) {
     scanGames();
 
@@ -120,10 +125,6 @@ char* menuBrowseForGame(void) {
         if (inputMenuDownPressed() && s_entryCount > 0) {
             selected = (selected + 1) % s_entryCount;
         }
-        if (inputMenuConfirmPressed() && s_entryCount > 0) {
-            char* result = strdup(s_entries[selected].path);
-            return result;
-        }
         if (inputMenuBackPressed()) {
             return NULL; // quit the app
         }
@@ -132,7 +133,41 @@ char* menuBrowseForGame(void) {
             continue;
         }
 
-        videoBeginFrame();
+        // Keep the selected entry roughly centered rather than
+        // scrolling the whole list from the top -- simplest way to
+        // keep a long library navigable on a 240px-tall screen.
+        int firstVisible = selected - 5;
+        if (firstVisible < 0) {
+            firstVisible = 0;
+        }
+        int lastVisible = firstVisible + 11;
+        if (lastVisible >= s_entryCount) {
+            lastVisible = s_entryCount - 1;
+            firstVisible = lastVisible - 11;
+            if (firstVisible < 0) {
+                firstVisible = 0;
+            }
+        }
+
+        bool confirmed = inputMenuConfirmPressed() && s_entryCount > 0;
+        int tx, ty;
+        if (inputTouchTapped(&tx, &ty)) {
+            if (ty >= 204) {
+                menuSettings(); // tapping the hint row doubles as the X shortcut
+                continue;
+            }
+            int row = (int)(ty / kRowHeight);
+            int tapped = firstVisible + row;
+            if (tapped >= firstVisible && tapped <= lastVisible) {
+                selected = tapped;
+                confirmed = true; // tap-to-play, standard touch-list behavior
+            }
+        }
+        if (confirmed) {
+            return strdup(s_entries[selected].path);
+        }
+
+        videoBeginFrame(false);
         if (s_entryCount == 0) {
             videoDrawMenuText("No PS1 discs found.", 8, 8, 0.5f);
             videoDrawMenuText("Put .cue/.bin/.chd/.pbp/.iso files in", 8, 28, 0.42f);
@@ -140,28 +175,14 @@ char* menuBrowseForGame(void) {
             videoDrawMenuText("(one folder per game is fine too)", 8, 60, 0.42f);
         } else {
             float y = 8;
-            // Keep the selected entry roughly centered rather than
-            // scrolling the whole list from the top -- simplest way to
-            // keep a long library navigable on a 240px-tall screen.
-            int firstVisible = selected - 5;
-            if (firstVisible < 0) {
-                firstVisible = 0;
-            }
-            int lastVisible = firstVisible + 11;
-            if (lastVisible >= s_entryCount) {
-                lastVisible = s_entryCount - 1;
-                firstVisible = lastVisible - 11;
-                if (firstVisible < 0) {
-                    firstVisible = 0;
-                }
-            }
             for (int i = firstVisible; i <= lastVisible; ++i) {
                 char line[80];
                 snprintf(line, sizeof(line), "%s %s", i == selected ? ">" : " ", s_entries[i].label);
                 videoDrawMenuText(line, 8, y, 0.45f);
-                y += 18;
+                y += kRowHeight;
             }
         }
+        videoDrawMenuText("Tap a game to play, or:", 8, 204, 0.38f);
         videoDrawMenuText("A: Play   B: Quit App   X: Settings", 8, 220, 0.4f);
         videoEndFrame();
     }
@@ -174,18 +195,25 @@ bool menuPause(void) {
         "Resume", "Save State", "Load State", "Change Disc",
     };
 
+    const float kFirstOptionY = 40.0f, kOptionSpacing = 20.0f;
+
     int selected = OPT_RESUME;
     bool confirmingQuit = false;
     char status[64] = "";
 
     while (aptMainLoop()) {
         inputPoll();
+        int tx, ty;
+        bool tapped = inputTouchTapped(&tx, &ty);
 
         if (confirmingQuit) {
-            if (inputMenuConfirmPressed()) {
+            // Tap either half of the screen for the matching choice --
+            // simplest touch equivalent of a two-button confirm dialog
+            // without needing to draw and hit-test two separate boxes.
+            if (inputMenuConfirmPressed() || (tapped && tx < 160)) {
                 return true; // confirmed: caller unloads and returns to the browser
             }
-            if (inputMenuBackPressed()) {
+            if (inputMenuBackPressed() || (tapped && tx >= 160)) {
                 confirmingQuit = false;
             }
         } else {
@@ -198,7 +226,15 @@ bool menuPause(void) {
             if (inputMenuBackPressed()) {
                 return false; // B also just resumes, matching most pause menus
             }
-            if (inputMenuConfirmPressed()) {
+            bool confirmed = inputMenuConfirmPressed();
+            if (tapped) {
+                int row = (int)((ty - kFirstOptionY) / kOptionSpacing);
+                if (row >= 0 && row < OPT_COUNT) {
+                    selected = row;
+                    confirmed = true; // tap an option to select and activate it in one go
+                }
+            }
+            if (confirmed) {
                 char path[512];
                 switch (selected) {
                 case OPT_RESUME:
@@ -220,24 +256,26 @@ bool menuPause(void) {
             }
         }
 
-        videoBeginFrame();
+        videoBeginFrame(false);
         videoDrawMenuText("Paused", 8, 8, 0.6f);
         if (confirmingQuit) {
             videoDrawMenuText("Return to the game list?", 8, 40, 0.5f);
             videoDrawMenuText("Unsaved progress will be lost --", 8, 58, 0.42f);
             videoDrawMenuText("use Save State first if you need it.", 8, 74, 0.42f);
+            videoDrawMenuText("Tap left: Confirm   Tap right: Cancel", 8, 204, 0.38f);
             videoDrawMenuText("A: Confirm   B: Cancel", 8, 220, 0.42f);
         } else {
-            float y = 40;
+            float y = kFirstOptionY;
             for (int i = 0; i < OPT_COUNT; ++i) {
                 char line[64];
                 snprintf(line, sizeof(line), "%s %s", i == selected ? ">" : " ", kOptions[i]);
                 videoDrawMenuText(line, 8, y, 0.5f);
-                y += 20;
+                y += kOptionSpacing;
             }
             if (status[0]) {
                 videoDrawMenuText(status, 8, y + 12, 0.42f);
             }
+            videoDrawMenuText("Tap an option, or:", 8, 204, 0.38f);
             videoDrawMenuText("A: Select   B: Resume", 8, 220, 0.42f);
         }
         videoEndFrame();
@@ -246,26 +284,60 @@ bool menuPause(void) {
 }
 
 void menuSettings(void) {
+    enum { ROW_BIOS, ROW_DISPLAY, ROW_COUNT };
+    const float kBiosRowY = 44.0f, kDisplayRowY = 84.0f;
+
+    int selected = ROW_BIOS;
+
     while (aptMainLoop()) {
         inputPoll();
 
-        if (inputMenuConfirmPressed() || inputMenuUpPressed() || inputMenuDownPressed()) {
-            settingsSetForceHle(!settingsGetForceHle());
+        if (inputMenuUpPressed()) {
+            selected = (selected - 1 + ROW_COUNT) % ROW_COUNT;
+        }
+        if (inputMenuDownPressed()) {
+            selected = (selected + 1) % ROW_COUNT;
+        }
+        bool toggle = inputMenuConfirmPressed();
+
+        int tx, ty;
+        if (inputTouchTapped(&tx, &ty)) {
+            if (ty >= kBiosRowY && ty < kBiosRowY + kRowHeight) {
+                selected = ROW_BIOS;
+                toggle = true;
+            } else if (ty >= kDisplayRowY && ty < kDisplayRowY + kRowHeight) {
+                selected = ROW_DISPLAY;
+                toggle = true;
+            }
+        }
+        if (toggle) {
+            if (selected == ROW_BIOS) {
+                settingsSetForceHle(!settingsGetForceHle());
+            } else {
+                settingsSetDisplayOnBottom(!settingsGetDisplayOnBottom());
+            }
         }
         if (inputMenuBackPressed()) {
             return;
         }
 
-        videoBeginFrame();
+        videoBeginFrame(false);
         videoDrawMenuText("Settings", 8, 8, 0.6f);
-        videoDrawMenuText("BIOS mode:", 8, 44, 0.5f);
-        videoDrawMenuText(settingsGetForceHle() ? "> Force HLE (no real BIOS)" :
-            "> Auto (use a real BIOS if present)", 8, 64, 0.45f);
-        videoDrawMenuText("A real BIOS dump goes in:", 8, 96, 0.42f);
-        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/", 8, 112, 0.42f);
-        videoDrawMenuText("(e.g. scph1001.bin) -- Auto finds it there", 8, 128, 0.38f);
-        videoDrawMenuText("and falls back to HLE if it's missing.", 8, 142, 0.38f);
-        videoDrawMenuText("A/Up/Down: Toggle   B: Back", 8, 220, 0.42f);
+
+        videoDrawMenuText(selected == ROW_BIOS ? "> BIOS mode:" : "  BIOS mode:", 8, 28, 0.45f);
+        videoDrawMenuText(settingsGetForceHle() ? "   Force HLE (no real BIOS)" :
+            "   Auto (use a real BIOS if present)", 8, kBiosRowY, 0.42f);
+
+        videoDrawMenuText(selected == ROW_DISPLAY ? "> Game display:" : "  Game display:", 8, 68, 0.45f);
+        videoDrawMenuText(settingsGetDisplayOnBottom() ? "   Bottom screen" : "   Top screen",
+            8, kDisplayRowY, 0.42f);
+
+        videoDrawMenuText("A real BIOS dump goes in:", 8, 130, 0.38f);
+        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/ (e.g. scph1001.bin)", 8, 144, 0.34f);
+        videoDrawMenuText("Auto finds it there, falls back to HLE if missing.", 8, 156, 0.34f);
+
+        videoDrawMenuText("Tap a setting, or:", 8, 204, 0.38f);
+        videoDrawMenuText("A/Up/Down: Select+Toggle   B: Back", 8, 220, 0.4f);
         videoEndFrame();
     }
 }
