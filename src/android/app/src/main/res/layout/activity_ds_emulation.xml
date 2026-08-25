@@ -27,10 +27,9 @@
     </LinearLayout>
 
     <!-- Touch button overlay populated programmatically in
-         DsEmulationActivity: DS has few enough buttons (A/B/X/Y, L/R,
-         Start/Select, D-pad) that plain positioned Buttons are simpler
-         and lower-risk than reworking InputOverlay's 3DS-specific bitmap
-         drawable system to also understand DS's button set. -->
+         DsEmulationActivity, reusing the same button artwork as the 3DS
+         side's InputOverlay (see buildButtonOverlay's doc comment) in a
+         fixed (non-draggable, non-per-game-configurable) layout. -->
     <FrameLayout
         android:id="@+id/ds_button_overlay"
         android:layout_width="match_parent"

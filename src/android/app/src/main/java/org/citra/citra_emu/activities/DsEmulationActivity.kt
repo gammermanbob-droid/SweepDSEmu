@@ -4,7 +4,6 @@
 
 package org.citra.citra_emu.activities
 
-import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -12,14 +11,16 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
-import android.view.ViewGroup
-import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.citra.citra_emu.NativeLibrary
+import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
 import org.citra.citra_emu.display.SecondaryDisplay
+import org.citra.citra_emu.overlay.DsDpadView
 
 /**
  * Plays a DS/DSi ROM via MergedCore::MelonDsCore (see core/melonds_core/),
@@ -244,77 +245,133 @@ class DsEmulationActivity : AppCompatActivity() {
     }
 
     // --- On-screen button overlay ---
+    //
+    // Reuses the exact same button artwork InputOverlay draws for the 3DS
+    // side (R.drawable.button_a/_b/_x/_y/_l/_r/_start/_select/_home, each
+    // with a matching "_pressed" variant) instead of the plain text-label
+    // Buttons this used to be, so the DS player's overlay looks like the
+    // rest of the app rather than a placeholder. Left as a fixed layout
+    // (no drag-to-reposition/per-game config) rather than pulling in the
+    // rest of InputOverlay's machinery, which is built entirely around
+    // the 3DS's own button IDs and settings keys -- DS has few enough
+    // buttons that this is a reasonable place to stop short of that.
 
     private fun buildButtonOverlay() {
         val overlay = binding.dsButtonOverlay
-        addOverlayButton(overlay, "▲", Gravity.TOP or Gravity.START, 220, 16, NativeLibrary.DsButtonType.DPAD_UP)
-        addOverlayButton(overlay, "▼", Gravity.TOP or Gravity.START, 220, 116, NativeLibrary.DsButtonType.DPAD_DOWN)
-        addOverlayButton(overlay, "◀", Gravity.TOP or Gravity.START, 160, 66, NativeLibrary.DsButtonType.DPAD_LEFT)
-        addOverlayButton(overlay, "▶", Gravity.TOP or Gravity.START, 280, 66, NativeLibrary.DsButtonType.DPAD_RIGHT)
 
-        addOverlayButton(overlay, "Y", Gravity.TOP or Gravity.END, 220, 16, NativeLibrary.DsButtonType.BUTTON_Y)
-        addOverlayButton(overlay, "A", Gravity.TOP or Gravity.END, 160, 66, NativeLibrary.DsButtonType.BUTTON_A)
-        addOverlayButton(overlay, "B", Gravity.TOP or Gravity.END, 280, 66, NativeLibrary.DsButtonType.BUTTON_B)
-        addOverlayButton(overlay, "X", Gravity.TOP or Gravity.END, 220, 116, NativeLibrary.DsButtonType.BUTTON_X)
+        val dpad = DsDpadView(this)
+        val dpadSize = dpToPx(168)
+        overlay.addView(
+            dpad,
+            FrameLayout.LayoutParams(dpadSize, dpadSize).apply {
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = dpToPx(24)
+                topMargin = dpToPx(16)
+            }
+        )
 
-        addOverlayButton(overlay, "L", Gravity.TOP or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_L)
-        addOverlayButton(overlay, "R", Gravity.TOP or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_R)
+        val faceSize = 64
+        val faceGap = 8
+        addOverlayButton(overlay, R.drawable.button_y, R.drawable.button_y_pressed, faceSize,
+            Gravity.TOP or Gravity.END, faceSize + faceGap, 0, NativeLibrary.DsButtonType.BUTTON_Y)
+        addOverlayButton(overlay, R.drawable.button_a, R.drawable.button_a_pressed, faceSize,
+            Gravity.TOP or Gravity.END, 2 * faceSize + 2 * faceGap, faceSize + faceGap,
+            NativeLibrary.DsButtonType.BUTTON_A)
+        addOverlayButton(overlay, R.drawable.button_b, R.drawable.button_b_pressed, faceSize,
+            Gravity.TOP or Gravity.END, 0, faceSize + faceGap, NativeLibrary.DsButtonType.BUTTON_B)
+        addOverlayButton(overlay, R.drawable.button_x, R.drawable.button_x_pressed, faceSize,
+            Gravity.TOP or Gravity.END, faceSize + faceGap, 2 * faceSize + 2 * faceGap,
+            NativeLibrary.DsButtonType.BUTTON_X)
 
-        addOverlayButton(overlay, "SELECT", Gravity.BOTTOM or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_SELECT)
-        addOverlayButton(overlay, "START", Gravity.BOTTOM or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_START)
+        addOverlayButton(overlay, R.drawable.button_l, R.drawable.button_l_pressed, 56,
+            Gravity.TOP or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_L)
+        addOverlayButton(overlay, R.drawable.button_r, R.drawable.button_r_pressed, 56,
+            Gravity.TOP or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_R)
 
-        val homeButton = Button(this).apply {
-            text = "HOME"
-            alpha = 0.6f
-            setOnClickListener { returnToThreeDsHomeMenu() }
+        addOverlayButton(overlay, R.drawable.button_select, R.drawable.button_select_pressed, 48,
+            Gravity.BOTTOM or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_SELECT)
+        addOverlayButton(overlay, R.drawable.button_start, R.drawable.button_start_pressed, 48,
+            Gravity.BOTTOM or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_START)
+
+        val homeButton = ImageButton(this).apply {
+            setImageResource(R.drawable.button_home)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            alpha = 0.85f
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> setImageResource(R.drawable.button_home_pressed)
+                    MotionEvent.ACTION_UP -> {
+                        setImageResource(R.drawable.button_home)
+                        confirmReturnToThreeDsHomeMenu()
+                    }
+                    MotionEvent.ACTION_CANCEL -> setImageResource(R.drawable.button_home)
+                }
+                true
+            }
         }
-        val homeParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            bottomMargin = 16
-        }
-        overlay.addView(homeButton, homeParams)
+        val homeSize = dpToPx(44)
+        overlay.addView(
+            homeButton,
+            FrameLayout.LayoutParams(homeSize, homeSize).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = dpToPx(16)
+            }
+        )
     }
 
     private fun addOverlayButton(
         parent: FrameLayout,
-        label: String,
+        @DrawableRes normalRes: Int,
+        @DrawableRes pressedRes: Int,
+        sizeDp: Int,
         gravity: Int,
         marginX: Int,
         marginY: Int,
         dsButtonBit: Int
     ) {
-        val button = Button(this).apply {
-            text = label
-            alpha = 0.6f
-            setBackgroundColor(Color.DKGRAY)
-            setOnTouchListener { v, event ->
+        val button = ImageButton(this).apply {
+            setImageResource(normalRes)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            alpha = 0.85f
+            setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        setImageResource(pressedRes)
                         NativeLibrary.dsOnButtonEvent(dsButtonBit, true)
-                        v.isPressed = true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        setImageResource(normalRes)
                         NativeLibrary.dsOnButtonEvent(dsButtonBit, false)
-                        v.isPressed = false
                     }
                 }
                 true
             }
         }
-        val params = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
+        val size = dpToPx(sizeDp)
+        val params = FrameLayout.LayoutParams(size, size).apply {
             this.gravity = gravity
-            leftMargin = marginX
-            topMargin = marginY
-            rightMargin = marginX
-            bottomMargin = marginY
+            leftMargin = dpToPx(marginX)
+            topMargin = dpToPx(marginY)
+            rightMargin = dpToPx(marginX)
+            bottomMargin = dpToPx(marginY)
         }
         parent.addView(button, params)
+    }
+
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
+
+    /**
+     * The HOME button (on-screen or physical) closes the current DS game
+     * to return to the emulated 3DS HOME Menu -- confirm first so a
+     * misplaced tap mid-game doesn't lose unsaved progress.
+     */
+    private fun confirmReturnToThreeDsHomeMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("Return to HOME Menu?")
+            .setMessage("This will close the current DS game.")
+            .setPositiveButton(android.R.string.ok) { _, _ -> returnToThreeDsHomeMenu() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     // --- Physical keyboard / Bluetooth controller input ---
@@ -328,7 +385,7 @@ class DsEmulationActivity : AppCompatActivity() {
 
         if (event.keyCode == kReturnToHomeMenuKeyCode) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                returnToThreeDsHomeMenu()
+                confirmReturnToThreeDsHomeMenu()
             }
             return true
         }
