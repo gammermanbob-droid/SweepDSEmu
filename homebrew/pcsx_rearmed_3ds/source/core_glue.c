@@ -135,6 +135,23 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = settingsGetForceHle() ? "HLE" : "auto";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_memcard1") == 0 ||
+            strcmp(var->key, "pcsx_rearmed_memcard2") == 0) {
+            // pcsx_rearmed's own default for card 1 is "libretro"
+            // (hands the card's raw bytes to the frontend via
+            // retro_get_memory_data/retro_get_memory_size for us to
+            // persist ourselves) -- we don't implement that side of
+            // the libretro API, so a card in that mode never actually
+            // got backed by anything on disk and games reported
+            // "memory card is not inserted". "shared" writes directly
+            // to a real .mcd file via SAVE_DIR (see
+            // RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY above) -- pcsx_rearmed
+            // handles that file I/O entirely itself, nothing further
+            // needed on our end. One real card per slot, shared across
+            // every game, same as a real physical memory card.
+            var->value = "shared";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
