@@ -174,7 +174,18 @@ void audioStopClip(void) {
     if (!s_clipData) {
         return;
     }
-    ndspChnWaveBufClear(AUDIO_CHANNEL);
+    // A full channel reset rather than just ndspChnWaveBufClear() --
+    // still documented to "stop playback" on its own, but a looping
+    // clip (see audioPlayClip) was still reportedly audible after a
+    // game got picked, so this reaches for the heavier, unambiguous
+    // stop instead of trusting the lighter one a second time.
+    // ndspChnReset() also clears format/rate/interpolation, so those
+    // get re-applied here rather than left for the next caller
+    // (audioResetForGameplay or another audioPlayClip) to discover
+    // they're missing.
+    ndspChnReset(AUDIO_CHANNEL);
+    ndspChnSetInterp(AUDIO_CHANNEL, NDSP_INTERP_LINEAR);
+    ndspChnSetFormat(AUDIO_CHANNEL, NDSP_FORMAT_STEREO_PCM16);
     linearFree(s_clipData);
     s_clipData = NULL;
 }
