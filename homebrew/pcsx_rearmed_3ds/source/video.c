@@ -208,9 +208,16 @@ void videoDrawMenuText(const char* text, float x, float y, float scale) {
 // screen's scene via videoBeginFrame(true) before calling this.
 void videoDrawAnalogToggle(bool enabled) {
     C2D_SceneBegin(s_bottom); // in case drawGameImage() above left the top screen selected
-    videoDrawMenuText("ANALOG", kAnalogToggleX - 24, kAnalogToggleY - kAnalogToggleRadius - 16, 0.4f);
+
+    // Fully opaque with a bright white outline ring so it stays clearly
+    // visible whether it's sitting on a plain background or directly
+    // over a busy game image (see settingsGetDisplayOnBottom).
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius + 4,
+        C2D_Color32(255, 255, 255, 255));
     C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.5f, kAnalogToggleRadius,
-        enabled ? C2D_Color32(60, 200, 90, 220) : C2D_Color32(80, 80, 90, 200));
+        enabled ? C2D_Color32(40, 210, 90, 255) : C2D_Color32(230, 30, 30, 255));
+
+    videoDrawMenuText("ANALOG", kAnalogToggleX - 26, kAnalogToggleY - kAnalogToggleRadius - 20, 0.42f);
 }
 
 void videoEndFrame(void) {

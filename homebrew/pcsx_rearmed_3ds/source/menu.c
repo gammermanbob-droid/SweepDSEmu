@@ -28,7 +28,11 @@
 
 typedef struct {
     char path[MAX_PATH_LEN]; // full path, for loading
-    char label[64];          // what's shown in the list
+    char label[128];         // what's shown in the list -- relative to
+                              // ROMS_ROOT, so a deeply-nested game still
+                              // shows a recognizable path, not just a
+                              // bare filename that could collide with
+                              // another game's
 } MenuEntry;
 
 static MenuEntry s_entries[MAX_ENTRIES];
@@ -48,6 +52,26 @@ static bool hasDiscExtension(const char* name) {
     return false;
 }
 
+// A .cue is a plain-text sheet listing the .bin(s) that make up its
+// disc (often more than one, for multi-track games) -- if a directory
+// has one, its .bin files are tracks meant to be loaded *through* the
+// .cue, not picked directly, so they shouldn't show up as their own
+// separate entries.
+static bool dirHasCueFile(const char* dirPath) {
+    DIR* dir = opendir(dirPath);
+    if (!dir) {
+        return false;
+    }
+    bool found = false;
+    struct dirent* ent;
+    while (!found && (ent = readdir(dir)) != NULL) {
+        const char* dot = strrchr(ent->d_name, '.');
+        found = dot && strcasecmp(dot, ".cue") == 0;
+    }
+    closedir(dir);
+    return found;
+}
+
 static void addEntry(const char* fullPath, const char* label) {
     if (s_entryCount >= MAX_ENTRIES) {
         return;
@@ -57,54 +81,59 @@ static void addEntry(const char* fullPath, const char* label) {
     snprintf(e->label, sizeof(e->label), "%s", label);
 }
 
-// Scans ROMS_ROOT plus exactly one level of subdirectories -- covers
-// both a flat dump of images directly in ROMS_ROOT and the very common
-// "one folder per game, containing its .cue/.bin" layout, without the
-// complexity of full interactive directory navigation (a reasonable
-// scope cut for a first version -- see the project checklist).
-static void scanGames(void) {
-    s_entryCount = 0;
-    mkdir("sdmc:/roms", 0777);
-    mkdir(ROMS_ROOT, 0777);
+// How many directory levels deep under ROMS_ROOT to look for discs --
+// covers a flat dump directly in ROMS_ROOT, the common "one folder per
+// game" layout, and a couple of extra levels on top of that for
+// however a user has their collection organized (by console/region/
+// series/game, for instance).
+#define MAX_SCAN_DEPTH 4
 
-    DIR* root = opendir(ROMS_ROOT);
-    if (!root) {
+static void scanDir(const char* dirPath, const char* relLabel, int depthRemaining) {
+    if (depthRemaining <= 0 || s_entryCount >= MAX_ENTRIES) {
         return;
     }
+    DIR* dir = opendir(dirPath);
+    if (!dir) {
+        return;
+    }
+    bool skipBareBins = dirHasCueFile(dirPath);
     struct dirent* ent;
-    while ((ent = readdir(root)) != NULL) {
+    while ((ent = readdir(dir)) != NULL && s_entryCount < MAX_ENTRIES) {
         if (ent->d_name[0] == '.') {
             continue;
         }
         char fullPath[MAX_PATH_LEN];
-        snprintf(fullPath, sizeof(fullPath), "%s/%s", ROMS_ROOT, ent->d_name);
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", dirPath, ent->d_name);
+
+        char label[128];
+        if (relLabel[0]) {
+            snprintf(label, sizeof(label), "%s/%s", relLabel, ent->d_name);
+        } else {
+            snprintf(label, sizeof(label), "%s", ent->d_name);
+        }
 
         struct stat st;
         if (stat(fullPath, &st) != 0) {
             continue;
         }
         if (S_ISDIR(st.st_mode)) {
-            DIR* sub = opendir(fullPath);
-            if (!sub) {
-                continue;
-            }
-            struct dirent* subEnt;
-            while ((subEnt = readdir(sub)) != NULL) {
-                if (subEnt->d_name[0] == '.' || !hasDiscExtension(subEnt->d_name)) {
-                    continue;
-                }
-                char subPath[MAX_PATH_LEN];
-                snprintf(subPath, sizeof(subPath), "%s/%s", fullPath, subEnt->d_name);
-                char label[64];
-                snprintf(label, sizeof(label), "%s/%s", ent->d_name, subEnt->d_name);
-                addEntry(subPath, label);
-            }
-            closedir(sub);
+            scanDir(fullPath, label, depthRemaining - 1);
         } else if (hasDiscExtension(ent->d_name)) {
-            addEntry(fullPath, ent->d_name);
+            const char* dot = strrchr(ent->d_name, '.');
+            bool isBareBin = dot && strcasecmp(dot, ".bin") == 0;
+            if (!(isBareBin && skipBareBins)) {
+                addEntry(fullPath, label);
+            }
         }
     }
-    closedir(root);
+    closedir(dir);
+}
+
+static void scanGames(void) {
+    s_entryCount = 0;
+    mkdir("sdmc:/roms", 0777);
+    mkdir(ROMS_ROOT, 0777);
+    scanDir(ROMS_ROOT, "", MAX_SCAN_DEPTH);
 }
 
 // Every list/menu screen in this file uses the same row layout: a
