@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // PSX pad bits, indexed by RETRO_DEVICE_ID_JOYPAD_* (see libretro.h) --
@@ -22,12 +23,17 @@ extern bool g_psxPad[PSX_MAX_BUTTONS];
 // actually renders one (data may be NULL on a "skip this frame" call,
 // per libretro.h's retro_video_refresh_t doc comment -- video.c must
 // leave the previous frame on screen in that case, not blank it).
+// Matches libretro.h's enum retro_pixel_format values exactly (0RGB1555=0,
+// XRGB8888=1, RGB565=2) -- video.c needs to know which of the two 16-bit
+// layouts it's looking at, not just that it's 2 bytes wide; RGB565 and
+// 0RGB1555 pack their bits completely differently and mixing them up
+// scrambles every pixel's colors.
 typedef struct {
     const void* data;   // NULL if this frame was skipped
     unsigned width;
     unsigned height;
     size_t pitch;       // bytes per row; may exceed width * bytes-per-pixel
-    unsigned bytesPerPixel; // 2 (RGB565/0RGB1555) or 4 (XRGB8888)
+    int pixelFormat;     // 0 = 0RGB1555, 1 = XRGB8888, 2 = RGB565
 } PsxFrame;
 
 // video.c
@@ -54,6 +60,8 @@ bool inputMenuConfirmPressed(void);
 // Raw physical-button d-pad edge triggers, for menu navigation.
 bool inputMenuUpPressed(void);
 bool inputMenuDownPressed(void);
+// X button -- opens the settings screen from the file browser.
+bool inputMenuSettingsPressed(void);
 
 // core_glue.c
 bool coreLoad(const char* path);
@@ -65,3 +73,5 @@ bool coreSerialize(const char* savestatePath);
 bool coreUnserialize(const char* savestatePath);
 double coreTargetFps(void);
 double coreSampleRate(void);
+const char* coreCurrentGameName(void);
+void coreSaveStatePath(char* buf, size_t bufSize);

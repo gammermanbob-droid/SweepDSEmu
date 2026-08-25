@@ -1,0 +1,52 @@
+// Copyright SweepDS Emu Project
+// Licensed under GPLv2 or any later version
+// Refer to the license.txt file included.
+
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+
+#include "settings.h"
+
+#define SETTINGS_DIR "sdmc:/3ds/pcsx_rearmed_3ds"
+#define SETTINGS_PATH SETTINGS_DIR "/settings.ini"
+
+static bool s_forceHle;
+
+void settingsLoad(void) {
+    s_forceHle = false;
+
+    FILE* f = fopen(SETTINGS_PATH, "r");
+    if (!f) {
+        return;
+    }
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        char key[64];
+        int value;
+        if (sscanf(line, "%63[^=]=%d", key, &value) == 2 && strcmp(key, "force_hle") == 0) {
+            s_forceHle = value != 0;
+        }
+    }
+    fclose(f);
+}
+
+static void save(void) {
+    mkdir("sdmc:/3ds", 0777);
+    mkdir(SETTINGS_DIR, 0777);
+    FILE* f = fopen(SETTINGS_PATH, "w");
+    if (!f) {
+        return;
+    }
+    fprintf(f, "force_hle=%d\n", s_forceHle ? 1 : 0);
+    fclose(f);
+}
+
+bool settingsGetForceHle(void) {
+    return s_forceHle;
+}
+
+void settingsSetForceHle(bool force) {
+    s_forceHle = force;
+    save();
+}

@@ -20,6 +20,7 @@
 
 #include "libretro.h"
 #include "psx3ds.h"
+#include "settings.h"
 
 bool g_psxPad[PSX_MAX_BUTTONS];
 
@@ -27,6 +28,7 @@ static enum retro_pixel_format s_pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
 static const struct retro_core_option_definition* s_coreOptions;
 static double s_targetFps = 60.0;
 static double s_sampleRate = 44100.0;
+static char s_currentGameName[128];
 
 #define SYSTEM_DIR "sdmc:/3ds/pcsx_rearmed_3ds/system"
 #define SAVE_DIR   "sdmc:/3ds/pcsx_rearmed_3ds/saves"
@@ -103,13 +105,14 @@ static bool environCallback(unsigned cmd, void* data) {
     case RETRO_ENVIRONMENT_GET_VARIABLE: {
         struct retro_variable* var = (struct retro_variable*)data;
         if (strcmp(var->key, "pcsx_rearmed_bios") == 0) {
-            // Force HLE BIOS: matches the "a ROM just boots, no extra
-            // setup" experience this project already committed to for
-            // melonDS's FreeBIOS fallback -- users shouldn't need to
-            // dump their own PS1 BIOS just to get a game running. A
-            // real BIOS dropped in SYSTEM_DIR still works fine later
-            // via the in-game options menu once one exists.
-            var->value = "HLE";
+            // pcsx_rearmed's own "auto" default already does the right
+            // thing with zero setup -- tries a real BIOS dump from
+            // SYSTEM_DIR first, silently falls back to HLE if none is
+            // there -- so just let it through unless the user has
+            // explicitly forced HLE from the settings screen (skips
+            // the real-BIOS lookup and its boot logo even when a real
+            // dump is present, matching what "HLE" always meant here).
+            var->value = settingsGetForceHle() ? "HLE" : "auto";
             return true;
         }
         return findCoreOptionDefault(var->key, &var->value);
@@ -133,7 +136,7 @@ static void videoRefreshCallback(const void* data, unsigned width, unsigned heig
         .width = width,
         .height = height,
         .pitch = pitch,
-        .bytesPerPixel = (s_pixelFormat == RETRO_PIXEL_FORMAT_XRGB8888) ? 4u : 2u,
+        .pixelFormat = (int)s_pixelFormat,
     };
     videoPresentGameFrame(&frame);
 }
@@ -164,7 +167,21 @@ static int16_t inputStateCallback(unsigned port, unsigned device, unsigned index
     return g_psxPad[id] ? 1 : 0;
 }
 
+static void setCurrentGameNameFromPath(const char* path) {
+    const char* slash = strrchr(path, '/');
+    const char* base = slash ? slash + 1 : path;
+    const char* dot = strrchr(base, '.');
+    size_t len = dot ? (size_t)(dot - base) : strlen(base);
+    if (len >= sizeof(s_currentGameName)) {
+        len = sizeof(s_currentGameName) - 1;
+    }
+    memcpy(s_currentGameName, base, len);
+    s_currentGameName[len] = '\0';
+}
+
 bool coreLoad(const char* path) {
+    setCurrentGameNameFromPath(path);
+
     retro_set_environment(environCallback);
     retro_init();
 
@@ -207,6 +224,17 @@ double coreTargetFps(void) {
 
 double coreSampleRate(void) {
     return s_sampleRate;
+}
+
+const char* coreCurrentGameName(void) {
+    return s_currentGameName;
+}
+
+void coreSaveStatePath(char* buf, size_t bufSize) {
+    mkdir("sdmc:/3ds", 0777);
+    mkdir("sdmc:/3ds/pcsx_rearmed_3ds", 0777);
+    mkdir(SAVE_DIR, 0777);
+    snprintf(buf, bufSize, "%s/%s.state", SAVE_DIR, s_currentGameName);
 }
 
 bool coreSerialize(const char* savestatePath) {

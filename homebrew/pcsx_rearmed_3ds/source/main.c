@@ -13,6 +13,7 @@
 
 #include "menu.h"
 #include "psx3ds.h"
+#include "settings.h"
 
 static void runGame(const char* path) {
     if (!coreLoad(path)) {
@@ -44,6 +45,8 @@ static void runGame(const char* path) {
 }
 
 int main(void) {
+    settingsLoad();
+
     if (!videoInit()) {
         return 1;
     }

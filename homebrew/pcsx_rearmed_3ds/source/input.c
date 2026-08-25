@@ -71,3 +71,7 @@ bool inputMenuUpPressed(void) {
 bool inputMenuDownPressed(void) {
     return (s_down & KEY_DDOWN) != 0;
 }
+
+bool inputMenuSettingsPressed(void) {
+    return (s_down & KEY_X) != 0;
+}

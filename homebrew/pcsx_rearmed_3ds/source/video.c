@@ -107,20 +107,25 @@ void videoPresentGameFrame(const PsxFrame* frame) {
     for (unsigned y = 0; y < h; ++y) {
         u16* dstRow = s_scratch + (size_t)y * TEX_W;
         const uint8_t* srcRow = src + (size_t)y * frame->pitch;
-        if (frame->bytesPerPixel == 4) {
+        switch (frame->pixelFormat) {
+        case 1: { // XRGB8888
             const u32* srcPx = (const u32*)srcRow;
             for (unsigned x = 0; x < w; ++x) {
                 dstRow[x] = to565_from8888(srcPx[x]);
             }
-        } else {
-            // RGB565 passthrough, 0RGB1555 needs the 5-bit-green fixup.
+            break;
+        }
+        case 2: { // RGB565 -- already our target layout, straight copy
+            memcpy(dstRow, srcRow, (size_t)w * sizeof(u16));
+            break;
+        }
+        default: { // 0RGB1555
             const u16* srcPx = (const u16*)srcRow;
-            // pcsx_rearmed only ever requests RGB565 or XRGB8888 (see
-            // core_glue.c's environCallback), so this branch covers the
-            // 0RGB1555 default a frontend must otherwise be ready for.
             for (unsigned x = 0; x < w; ++x) {
                 dstRow[x] = to565_from1555(srcPx[x]);
             }
+            break;
+        }
         }
     }
 

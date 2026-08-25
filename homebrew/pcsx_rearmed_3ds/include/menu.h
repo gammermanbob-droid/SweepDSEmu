@@ -14,7 +14,13 @@ char* menuBrowseForGame(void);
 
 // Renders and drives the pause menu opened by the START+SELECT chord
 // during gameplay (see input.c). Returns true if the caller should
-// return to the file browser (either the user chose "Quit to Menu" and
-// confirmed, or "Quit App" -- both unload the current game first), or
-// false to just resume play.
+// unload the game and return to the file browser (the user picked
+// "Change Disc" and confirmed), or false to just resume play (covers
+// both "Resume" and after a save/load state, which stay in this
+// screen rather than falling through to gameplay automatically).
 bool menuPause(void);
+
+// Renders and drives the BIOS settings screen, reachable from the file
+// browser via X. Self-contained -- reads/writes settings.h directly,
+// nothing for the caller to do with the result.
+void menuSettings(void);

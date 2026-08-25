@@ -20,6 +20,7 @@
 
 #include "menu.h"
 #include "psx3ds.h"
+#include "settings.h"
 
 #define ROMS_ROOT "sdmc:/roms/psx"
 #define MAX_ENTRIES 512
@@ -126,6 +127,10 @@ char* menuBrowseForGame(void) {
         if (inputMenuBackPressed()) {
             return NULL; // quit the app
         }
+        if (inputMenuSettingsPressed()) {
+            menuSettings();
+            continue;
+        }
 
         videoBeginFrame();
         if (s_entryCount == 0) {
@@ -157,18 +162,21 @@ char* menuBrowseForGame(void) {
                 y += 18;
             }
         }
-        videoDrawMenuText("A: Play   B: Quit App", 8, 220, 0.4f);
+        videoDrawMenuText("A: Play   B: Quit App   X: Settings", 8, 220, 0.4f);
         videoEndFrame();
     }
     return NULL;
 }
 
 bool menuPause(void) {
-    enum { OPT_RESUME, OPT_QUIT_TO_MENU, OPT_COUNT };
-    static const char* const kOptions[OPT_COUNT] = {"Resume", "Quit to Menu"};
+    enum { OPT_RESUME, OPT_SAVE_STATE, OPT_LOAD_STATE, OPT_CHANGE_DISC, OPT_COUNT };
+    static const char* const kOptions[OPT_COUNT] = {
+        "Resume", "Save State", "Load State", "Change Disc",
+    };
 
     int selected = OPT_RESUME;
     bool confirmingQuit = false;
+    char status[64] = "";
 
     while (aptMainLoop()) {
         inputPoll();
@@ -181,25 +189,43 @@ bool menuPause(void) {
                 confirmingQuit = false;
             }
         } else {
-            if (inputMenuUpPressed() || inputMenuDownPressed()) {
-                selected = (selected == OPT_RESUME) ? OPT_QUIT_TO_MENU : OPT_RESUME;
+            if (inputMenuUpPressed()) {
+                selected = (selected - 1 + OPT_COUNT) % OPT_COUNT;
+            }
+            if (inputMenuDownPressed()) {
+                selected = (selected + 1) % OPT_COUNT;
             }
             if (inputMenuBackPressed()) {
                 return false; // B also just resumes, matching most pause menus
             }
             if (inputMenuConfirmPressed()) {
-                if (selected == OPT_RESUME) {
+                char path[512];
+                switch (selected) {
+                case OPT_RESUME:
                     return false;
+                case OPT_SAVE_STATE:
+                    coreSaveStatePath(path, sizeof(path));
+                    snprintf(status, sizeof(status), "%s",
+                        coreSerialize(path) ? "State saved." : "Save failed.");
+                    break;
+                case OPT_LOAD_STATE:
+                    coreSaveStatePath(path, sizeof(path));
+                    snprintf(status, sizeof(status), "%s",
+                        coreUnserialize(path) ? "State loaded." : "No state to load.");
+                    break;
+                case OPT_CHANGE_DISC:
+                    confirmingQuit = true;
+                    break;
                 }
-                confirmingQuit = true;
             }
         }
 
         videoBeginFrame();
         videoDrawMenuText("Paused", 8, 8, 0.6f);
         if (confirmingQuit) {
-            videoDrawMenuText("Quit to the game list?", 8, 40, 0.5f);
-            videoDrawMenuText("Unsaved progress will be lost.", 8, 58, 0.42f);
+            videoDrawMenuText("Return to the game list?", 8, 40, 0.5f);
+            videoDrawMenuText("Unsaved progress will be lost --", 8, 58, 0.42f);
+            videoDrawMenuText("use Save State first if you need it.", 8, 74, 0.42f);
             videoDrawMenuText("A: Confirm   B: Cancel", 8, 220, 0.42f);
         } else {
             float y = 40;
@@ -209,9 +235,37 @@ bool menuPause(void) {
                 videoDrawMenuText(line, 8, y, 0.5f);
                 y += 20;
             }
+            if (status[0]) {
+                videoDrawMenuText(status, 8, y + 12, 0.42f);
+            }
             videoDrawMenuText("A: Select   B: Resume", 8, 220, 0.42f);
         }
         videoEndFrame();
     }
     return true;
+}
+
+void menuSettings(void) {
+    while (aptMainLoop()) {
+        inputPoll();
+
+        if (inputMenuConfirmPressed() || inputMenuUpPressed() || inputMenuDownPressed()) {
+            settingsSetForceHle(!settingsGetForceHle());
+        }
+        if (inputMenuBackPressed()) {
+            return;
+        }
+
+        videoBeginFrame();
+        videoDrawMenuText("Settings", 8, 8, 0.6f);
+        videoDrawMenuText("BIOS mode:", 8, 44, 0.5f);
+        videoDrawMenuText(settingsGetForceHle() ? "> Force HLE (no real BIOS)" :
+            "> Auto (use a real BIOS if present)", 8, 64, 0.45f);
+        videoDrawMenuText("A real BIOS dump goes in:", 8, 96, 0.42f);
+        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/", 8, 112, 0.42f);
+        videoDrawMenuText("(e.g. scph1001.bin) -- Auto finds it there", 8, 128, 0.38f);
+        videoDrawMenuText("and falls back to HLE if it's missing.", 8, 142, 0.38f);
+        videoDrawMenuText("A/Up/Down: Toggle   B: Back", 8, 220, 0.42f);
+        videoEndFrame();
+    }
 }
