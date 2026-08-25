@@ -5,7 +5,7 @@
 <!-- The DS side's overlay has no per-button-scale system (that's a
      3DS-only menu, see menu_overlay_options.xml's own adjust-scale
      submenu), but does now support drag-to-reposition via
-     DsButtonOverlayView -- "Edit Layout" and "Reset Overlay" below
+     DsButtonOverlayView: "Edit Layout" and "Reset Overlay" below
      reuse the exact same string resources the 3DS side's own overlay
      options menu uses for the equivalent entries. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
