@@ -3,7 +3,7 @@
      Licensed under GPLv2 or any later version
      Refer to the license.txt file included. -->
 <!-- The DS-relevant subset of menu_in_game.xml (the 3DS side's own
-     in-game drawer menu) -- Amiibo, screen-layout switching, Cheats,
+     in-game drawer menu): Amiibo, screen-layout switching, Cheats,
      and Multiplayer don't apply to a DS session, so they're left out
      rather than wired up to do nothing. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">

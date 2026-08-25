@@ -5,7 +5,7 @@
 <!-- Same DrawerLayout + NavigationView shape as fragment_emulation.xml's
      3DS side (see menu_ds_in_game.xml for the DS-appropriate subset of
      that menu's options), just hosted directly by the Activity instead
-     of a Fragment -- DsEmulationActivity was never fragment-based. -->
+     of a Fragment: DsEmulationActivity was never fragment-based. -->
 <androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
