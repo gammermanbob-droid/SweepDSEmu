@@ -76,8 +76,15 @@ enum class AndroidOpenMode {
 
 class AndroidBuildFlavors {
 public:
-    static constexpr std::string GOOGLEPLAY = "googlePlay";
-    static constexpr std::string VANILLA = "vanilla";
+    // std::string_view, not std::string: a constexpr std::string whose
+    // value doesn't fit in libc++'s small-string buffer requires a
+    // constexpr heap allocation, which isn't a constant expression --
+    // fails to compile on stricter/newer libc++ versions ("googlePlay"
+    // and "vanilla" are right at that edge, so this only broke once the
+    // CI runner's NDK/libc++ moved). string_view has no such limit,
+    // since it never owns/allocates the characters it points at.
+    static constexpr std::string_view GOOGLEPLAY = "googlePlay";
+    static constexpr std::string_view VANILLA = "vanilla";
 };
 
 inline AndroidOpenMode operator|(AndroidOpenMode a, int b) {
