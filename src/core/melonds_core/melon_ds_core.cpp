@@ -12,6 +12,7 @@
 #include "core/melonds_core/melon_ds_core.h"
 
 #include "common/file_util.h"
+#include "common/logging/log.h"
 #include "core/button_id_ds.h"
 #if defined(ANDROID)
 #include "common/android_utils.h"
@@ -143,6 +144,50 @@ fs::path FindSystemFile(const std::vector<fs::path>& searchDirs, const char* fil
     return {};
 }
 
+// A single bulk fs::copy(recursive) stops at the first entry it can't
+// handle (a nested symlink, a permission-denied file, etc.), silently
+// leaving everything after it missing -- which for `roms/` means the
+// FAT/DLDI image TWiLightMenu++'s nds-bootstrap reads from can end up
+// truncated, and nds-bootstrap treats that as a corrupted SD card. Walk
+// the tree and copy file-by-file instead, so one bad entry doesn't take
+// out the rest, and log every failure instead of swallowing it.
+void CopyDirectoryRecursive(const fs::path& target, const fs::path& link) {
+    std::error_code ec;
+    fs::create_directories(link, ec);
+    if (ec) {
+        LOG_ERROR(Core, "Failed to create directory {}: {}", link.string(), ec.message());
+        return;
+    }
+    for (auto it = fs::recursive_directory_iterator(
+             target, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            LOG_ERROR(Core, "Failed to walk {}: {}", target.string(), ec.message());
+            ec.clear();
+            continue;
+        }
+        const fs::path& src_path = it->path();
+        const fs::path dst_path = link / fs::relative(src_path, target, ec);
+        if (ec) {
+            LOG_ERROR(Core, "Failed to resolve relative path for {}: {}", src_path.string(),
+                       ec.message());
+            ec.clear();
+            continue;
+        }
+        if (it->is_directory(ec)) {
+            fs::create_directories(dst_path, ec);
+        } else {
+            fs::create_directories(dst_path.parent_path(), ec);
+            fs::copy_file(src_path, dst_path, fs::copy_options::update_existing, ec);
+        }
+        if (ec) {
+            LOG_ERROR(Core, "Failed to copy {} to {}: {}", src_path.string(), dst_path.string(),
+                       ec.message());
+            ec.clear();
+        }
+    }
+}
+
 // Some Android storage backends -- particularly FUSE-mediated scoped
 // storage, which mediates access to shared/external folders an app
 // doesn't have direct raw filesystem access to -- don't support
@@ -169,8 +214,7 @@ void LinkOrCopyDirectory(const fs::path& target, const fs::path& link) {
     }
 
     fs::remove_all(link, ec);
-    fs::create_directories(link, ec);
-    fs::copy(target, link, fs::copy_options::recursive | fs::copy_options::update_existing, ec);
+    CopyDirectoryRecursive(target, link);
 }
 
 fs::path BuildHomebrewSDCardRoot() {
