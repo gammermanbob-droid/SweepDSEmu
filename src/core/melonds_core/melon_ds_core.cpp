@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <vector>
 
 #include "core/melonds_core/melon_ds_core.h"
@@ -166,6 +167,24 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
 
     melonDS::NDSArgs args{};
 
+#if defined(ANDROID)
+    // Android blocks W^X (simultaneously writable+executable) pages for
+    // apps targeting modern API levels, which is exactly what a JIT's
+    // compiled-code arena needs -- unlike Azahar's own dynarmic JIT
+    // (which already does the correct write-then-mprotect-to-exec dance
+    // for Android), melonDS's ARMJIT allocates and executes its code
+    // buffer without that dance, so the first compiled block's first
+    // execution either gets SIGSEGV'd or the process is killed outright
+    // by SELinux -- silently, with no C++ exception to catch and no
+    // chance for the Kotlin side's load-error dialog to ever run (this
+    // is why the player screen briefly appears -- Load() itself
+    // succeeds -- then the whole process dies the moment RunFrame()
+    // first executes JIT-compiled code). Interpreted-only sidesteps
+    // this entirely; a DS's ARM7/ARM9 are trivial to interpret at full
+    // speed on any phone this app targets, unlike 3DS CPU emulation
+    // which genuinely needs dynarmic's JIT for full speed.
+    args.JIT = std::nullopt;
+#else
     // FastMem backs JIT-compiled code's direct memory accesses with a
     // SIGSEGV/SIGBUS-driven fixup scheme (see the ARMJIT_Memory patch
     // in cmake/melonds.cmake for the crash that scheme was hitting in
@@ -178,6 +197,7 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     if (args.JIT) {
         args.JIT->FastMemory = false;
     }
+#endif
 
     // melonDS can run with a real dumped BIOS/firmware or with its
     // built-in FreeBIOS + a synthesized firmware. Prefer real
