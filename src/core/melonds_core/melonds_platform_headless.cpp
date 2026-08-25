@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <dlfcn.h>
 #include <filesystem>
 #include <mutex>
 #include <semaphore>
@@ -402,15 +403,40 @@ float Addon_MotionQuery(MotionQueryType /*type*/, void* /*userdata*/) {
     return 0.0f;
 }
 
-// --- Dynamic library loading — only used by melonDS's own GL loader,
-// which we never build (software renderer only). ---
-
-DynamicLibrary* DynamicLibrary_Load(const char* /*lib*/) {
-    return nullptr;
+// --- Dynamic library loading ---
+//
+// Not just melonDS's own (never-built-here) GL loader: ARMJIT_Memory's
+// constructor also calls this directly on Android to resolve
+// ASharedMemory_create from libandroid.so for its fastmem arena's
+// shared-memory backing (see ARMJIT_Memory.cpp's "#if
+// defined(__ANDROID__)" branch). A hard stub returning nullptr here
+// silently forced that code down its legacy /dev/ashmem fallback
+// instead — which fails outright on modern Android (SELinux blocks
+// direct ashmem device access for regular apps since Android 10) — so
+// the arena's real mmap remap failed, MemoryBase was left pointing at
+// its original PROT_NONE reservation, and the very next write into it
+// (still inside the same constructor, zero-filling the arena)
+// segfaulted before melonDS's own fastmem SIGSEGV handler had any
+// chance of resolving it (that handler only works once NDS::Current is
+// set, which doesn't happen until NDS::RunFrame() -- see the
+// ARMJIT_Memory patch below this file's own melonds.cmake entry for
+// the closely related crash that same gap already caused once).  A
+// real dlopen/dlsym-backed implementation isn't Android-specific
+// either -- it's just as correct on macOS/Linux, where nothing
+// actually calls it with a real library name today.
+DynamicLibrary* DynamicLibrary_Load(const char* lib) {
+    return reinterpret_cast<DynamicLibrary*>(dlopen(lib, RTLD_NOW | RTLD_LOCAL));
 }
-void DynamicLibrary_Unload(DynamicLibrary* /*lib*/) {}
-void* DynamicLibrary_LoadFunction(DynamicLibrary* /*lib*/, const char* /*name*/) {
-    return nullptr;
+void DynamicLibrary_Unload(DynamicLibrary* lib) {
+    if (lib) {
+        dlclose(reinterpret_cast<void*>(lib));
+    }
+}
+void* DynamicLibrary_LoadFunction(DynamicLibrary* lib, const char* name) {
+    if (!lib) {
+        return nullptr;
+    }
+    return dlsym(reinterpret_cast<void*>(lib), name);
 }
 
 } // namespace melonDS::Platform
