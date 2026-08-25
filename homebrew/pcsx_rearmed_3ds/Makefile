@@ -116,7 +116,7 @@ endif
 
 .PHONY: all clean core
 
-all: core $(BUILD) $(DEPSDIR)
+all: core $(ROMFS)/ps1_logo.t3x $(BUILD) $(DEPSDIR)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 core: $(PCSX_CORE)
@@ -124,6 +124,13 @@ core: $(PCSX_CORE)
 $(PCSX_CORE):
 	@echo "building pcsx_rearmed core for ctr..."
 	@$(MAKE) -C $(PCSX_DIR) -f Makefile.libretro platform=ctr -j$$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+# The ANALOG toggle's PS1-logo badge (see video.c's videoDrawAnalogToggle) --
+# generated from gfx/ps1_logo.png via tex3ds rather than checked in as a
+# binary .t3x, same reasoning as building the vendored core from source.
+$(ROMFS)/ps1_logo.t3x: gfx/ps1_logo.png
+	@mkdir -p $(ROMFS)
+	tex3ds -o $@ $<
 
 $(BUILD):
 	@mkdir -p $@

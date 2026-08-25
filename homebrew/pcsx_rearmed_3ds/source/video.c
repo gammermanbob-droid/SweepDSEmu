@@ -11,6 +11,7 @@
 // working version; PS1 output tops out around 640x480, comfortably
 // within what a straightforward textured-quad blit can keep up with.
 
+#include <3ds.h>
 #include <citro2d.h>
 #include <citro3d.h>
 #include <string.h>
@@ -33,6 +34,8 @@ static C2D_Image s_gameImage;
 static bool s_haveFrame;
 static C2D_TextBuf s_textBuf;
 static C2D_Font s_font; // NULL == fall back to the citro2d system font
+static C2D_SpriteSheet s_analogSheet;
+static C2D_Image s_analogLogo;
 
 bool videoInit(void) {
     gfxInitDefault();
@@ -44,6 +47,15 @@ bool videoInit(void) {
         return false;
     }
     C2D_Prepare();
+
+    if (R_FAILED(romfsInit())) {
+        return false;
+    }
+    s_analogSheet = C2D_SpriteSheetLoad("romfs:/ps1_logo.t3x");
+    if (!s_analogSheet) {
+        return false;
+    }
+    s_analogLogo = C2D_SpriteSheetGetImage(s_analogSheet, 0);
 
     s_top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     s_bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
@@ -73,6 +85,10 @@ void videoExit(void) {
     if (s_textBuf) {
         C2D_TextBufDelete(s_textBuf);
     }
+    if (s_analogSheet) {
+        C2D_SpriteSheetFree(s_analogSheet);
+    }
+    romfsExit();
     if (s_scratch) {
         linearFree(s_scratch);
     }
@@ -211,11 +227,20 @@ void videoDrawAnalogToggle(bool enabled) {
 
     // Fully opaque with a bright white outline ring so it stays clearly
     // visible whether it's sitting on a plain background or directly
-    // over a busy game image (see settingsGetDisplayOnBottom).
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius + 4,
+    // over a busy game image (see settingsGetDisplayOnBottom). Off:
+    // the original neutral gray. On: a deliberately different shade
+    // of red than the PlayStation logo's own (~222,0,41) so the badge
+    // doesn't just blend into its own background.
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 4,
         C2D_Color32(255, 255, 255, 255));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.5f, kAnalogToggleRadius,
-        enabled ? C2D_Color32(40, 210, 90, 255) : C2D_Color32(230, 30, 30, 255));
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius,
+        enabled ? C2D_Color32(160, 40, 15, 255) : C2D_Color32(80, 80, 90, 200));
+
+    // PlayStation logo badge, centered inside the circle.
+    const float logoSize = kAnalogToggleRadius * 1.5f; // fits with a bit of padding
+    float scale = logoSize / s_analogLogo.subtex->width;
+    C2D_DrawImageAt(s_analogLogo, kAnalogToggleX - logoSize / 2.0f, kAnalogToggleY - logoSize / 2.0f,
+        0.5f, NULL, scale, scale);
 
     videoDrawMenuText("ANALOG", kAnalogToggleX - 26, kAnalogToggleY - kAnalogToggleRadius - 20, 0.42f);
 }

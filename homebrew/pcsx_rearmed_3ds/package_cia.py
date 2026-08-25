@@ -118,8 +118,12 @@ def main():
             check=True,
         )
 
-        empty_romfs = os.path.join(work_dir, "empty_romfs")
-        os.makedirs(empty_romfs, exist_ok=True)
+        # romfs/ (the ANALOG toggle's PS1-logo badge, see the Makefile's
+        # tex3ds rule) -- built by `make` alongside the .elf, must exist
+        # by the time this packages the CIA.
+        romfs_dir = os.path.join(HERE, "romfs")
+        if not os.path.isdir(romfs_dir) or not os.listdir(romfs_dir):
+            sys.exit(f"{romfs_dir} is missing or empty -- run `make` first")
 
         os.makedirs(args.output_dir, exist_ok=True)
         output_cia = os.path.join(args.output_dir, "pcsx_rearmed_3ds.cia")
@@ -132,7 +136,7 @@ def main():
                 "-target", "t", "-exefslogo",
                 f"-DAPP_TITLE={TITLE}",
                 f"-DAPP_PRODUCT_CODE={PRODUCT_CODE}",
-                f"-DAPP_ROMFS={empty_romfs}",
+                f"-DAPP_ROMFS={romfs_dir}",
                 "-DAPP_CATEGORY=Application",
                 f"-DAPP_UNIQUE_ID={UNIQUE_ID}",
                 "-DAPP_USE_ON_SD=true",
