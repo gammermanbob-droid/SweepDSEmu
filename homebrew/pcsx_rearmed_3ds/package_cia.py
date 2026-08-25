@@ -138,8 +138,19 @@ def main():
                 "-DAPP_USE_ON_SD=true",
                 "-DAPP_ENCRYPTED=false",
                 "-DAPP_MEMORY_TYPE=Application",
-                "-DAPP_SYSTEM_MODE=64MB",
-                "-DAPP_SYSTEM_MODE_EXT=Legacy",
+                # 64MB (this app's original value, copied from
+                # tools/make_ds_forwarder.py's do-nothing stub CIA) is
+                # nowhere near enough for a real PS1 emulator -- the
+                # device log showed pcsx_rearmed reserving a 32MB
+                # linear heap alone, leaving barely 30MB for everything
+                # else (app code, PS1 RAM emulation, dynarec code
+                # cache, GPU command buffers), and pcsx_rearmed's own
+                # log_mem_usage() logs a "past OOM detected, expect
+                # instability" warning as a result. 96MB is the max
+                # SystemMode an Old3DS supports; New3DS gets the full
+                # 178MB extended pool via SystemModeExt on top of that.
+                "-DAPP_SYSTEM_MODE=96MB",
+                "-DAPP_SYSTEM_MODE_EXT=178MB",
                 "-DAPP_CPU_SPEED=268MHz",
                 "-DAPP_ENABLE_L2_CACHE=false",
                 "-DAPP_VERSION_MAJOR=1",

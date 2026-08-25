@@ -16,6 +16,19 @@
 #include "psx3ds.h"
 #include "settings.h"
 
+// devkitARM's default main-thread stack for a 3dsx/CIA homebrew app is
+// only 32KB (__stacksize__'s weak default from libctru's own startup
+// code) -- pcsx_rearmed's own log_mem_usage() checks this at startup
+// and logs "past OOM detected, expect instability" if it's under 1MB,
+// which is exactly what showed up in this app's own log after
+// installing. A plain, non-weak global of the same name overrides
+// that default (standard ELF weak-symbol resolution; matches
+// DSEmulationActivity.kt's setStackSize() comment for the same class
+// of problem on the Android/DS side of this project -- deep JIT
+// compiler call chains need more than the platform default). 2MB is
+// comfortably above pcsx_rearmed's own 1MB floor.
+u32 __stacksize__ = 2 * 1024 * 1024;
+
 static void runGame(const char* path) {
     if (!coreLoad(path)) {
         return;
