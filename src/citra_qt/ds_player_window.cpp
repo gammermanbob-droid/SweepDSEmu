@@ -237,6 +237,26 @@ void DSPlayerWindow::OnConsolePoweredOff() {
     close();
 }
 
+QRect DSPlayerWindow::AspectFitRect(const QRect& area) {
+    if (area.width() <= 0 || area.height() <= 0) {
+        return area;
+    }
+    // Compare width-if-full-height against the area's own width rather
+    // than dividing to compare ratios directly, so this works exactly
+    // the same regardless of int/float precision quirks at extreme
+    // (very wide or very tall) window shapes.
+    const int width_at_full_height = area.height() * kScreenWidth / kScreenHeight;
+    if (width_at_full_height <= area.width()) {
+        // Height is the limiting dimension -- pillarbox (bars on the sides).
+        const int x = area.left() + (area.width() - width_at_full_height) / 2;
+        return QRect(x, area.top(), width_at_full_height, area.height());
+    }
+    // Width is the limiting dimension -- letterbox (bars top/bottom).
+    const int height_at_full_width = area.width() * kScreenHeight / kScreenWidth;
+    const int y = area.top() + (area.height() - height_at_full_width) / 2;
+    return QRect(area.left(), y, area.width(), height_at_full_width);
+}
+
 void DSPlayerWindow::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
@@ -246,10 +266,11 @@ void DSPlayerWindow::paintEvent(QPaintEvent* /*event*/) {
 
     const int half_height = height() / 2;
     if (!top_image_.isNull()) {
-        painter.drawImage(QRect(0, 0, width(), half_height), top_image_);
+        painter.drawImage(AspectFitRect(QRect(0, 0, width(), half_height)), top_image_);
     }
     if (!bottom_image_.isNull()) {
-        painter.drawImage(QRect(0, half_height, width(), height() - half_height), bottom_image_);
+        painter.drawImage(
+            AspectFitRect(QRect(0, half_height, width(), height() - half_height)), bottom_image_);
     }
 }
 
@@ -269,14 +290,25 @@ void DSPlayerWindow::UpdateTouch(const QPoint& widget_pos, bool pressed) {
         return;
     }
 
-    const int bottom_height = height() - half_height;
-    if (width() <= 0 || bottom_height <= 0)
+    // Must match paintEvent()'s own AspectFitRect() call exactly, or
+    // touch position drifts from what's actually drawn on screen the
+    // moment the window isn't a perfect 4:3-per-half shape (i.e.
+    // almost always) — this is the same letterboxed/pillarboxed rect
+    // the bottom screen image is drawn into, not the full bottom half.
+    const QRect bottom_rect =
+        AspectFitRect(QRect(0, half_height, width(), height() - half_height));
+    if (!bottom_rect.contains(widget_pos)) {
+        // Inside the bottom half but landed in a letterbox/pillarbox
+        // bar rather than on the screen image itself.
+        input_state_.touch_pressed = false;
+        RebuildKeyMask();
         return;
+    }
 
-    const double scale_x = static_cast<double>(kScreenWidth) / width();
-    const double scale_y = static_cast<double>(kScreenHeight) / bottom_height;
-    int ds_x = static_cast<int>(widget_pos.x() * scale_x);
-    int ds_y = static_cast<int>((widget_pos.y() - half_height) * scale_y);
+    const double scale_x = static_cast<double>(kScreenWidth) / bottom_rect.width();
+    const double scale_y = static_cast<double>(kScreenHeight) / bottom_rect.height();
+    int ds_x = static_cast<int>((widget_pos.x() - bottom_rect.left()) * scale_x);
+    int ds_y = static_cast<int>((widget_pos.y() - bottom_rect.top()) * scale_y);
     ds_x = std::clamp(ds_x, 0, kScreenWidth - 1);
     ds_y = std::clamp(ds_y, 0, kScreenHeight - 1);
 

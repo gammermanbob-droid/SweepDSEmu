@@ -109,6 +109,16 @@ private:
     void UpdateTouch(const QPoint& widget_pos, bool pressed);
     void RebuildKeyMask();
 
+    // Largest kScreenWidth:kScreenHeight-aspect rect that fits inside
+    // `area`, centered within it (letterboxed/pillarboxed as needed).
+    // paintEvent() and UpdateTouch() both call this so the drawn
+    // screen and the touch hit-test always agree on where the screen
+    // actually is — previously each computed its own independent
+    // mapping (drawImage() stretching to the full half-window rect,
+    // UpdateTouch() scaling linearly off the full widget width), which
+    // is what caused the squash/stretch-on-resize behavior.
+    static QRect AspectFitRect(const QRect& area);
+
     std::unique_ptr<DSEmuThread> thread_;
     QImage top_image_;
     QImage bottom_image_;
