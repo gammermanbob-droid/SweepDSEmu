@@ -115,6 +115,10 @@ class DsButtonOverlayView @JvmOverloads constructor(
             invalidate()
         }
     private var buttonBeingConfigured: InputOverlayDrawableButton? = null
+    // Set instead of buttonBeingConfigured when a touch starts on a
+    // button's resize handle (see resizeHandleRect) rather than its
+    // body -- the two are mutually exclusive per gesture.
+    private var buttonBeingResized: InputOverlayDrawableButton? = null
 
     // Edit mode has to be visually unmistakable -- a translucent tint
     // plus a border around each housing zone -- since a silent mode
@@ -126,6 +130,31 @@ class DsButtonOverlayView @JvmOverloads constructor(
         color = Color.argb(200, 0, 150, 255)
         style = Paint.Style.STROKE
         strokeWidth = 4f
+    }
+    private val resizeHandleFillPaint = Paint().apply { color = Color.argb(230, 255, 200, 0) }
+    private val resizeHandleBorderPaint = Paint().apply {
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    // A drag handle at each button's bottom-right corner, only shown/
+    // hit-testable in edit mode -- dragging the button's *body* moves
+    // it (existing behavior), dragging this smaller square instead
+    // resizes it, growing/shrinking from the fixed top-left corner
+    // like a standard corner-resize handle in an image/window editor.
+    // Deliberately not a pinch gesture: this project's touch-dispatch
+    // code has had more than one subtle multi-pointer bug already this
+    // session, and a single-finger drag on a small, precisely-defined
+    // hit target is far more predictable to get right without being
+    // able to test on-device myself.
+    private val resizeHandleSizePx get() = dp(28)
+
+    private fun resizeHandleRect(button: InputOverlayDrawableButton): Rect {
+        val h = resizeHandleSizePx
+        return Rect(button.bounds.right - h, button.bounds.bottom - h, button.bounds.right, button.bounds.bottom)
     }
 
     private fun scaledBitmap(resId: Int, sizePx: Int): Bitmap {
@@ -164,7 +193,10 @@ class DsButtonOverlayView @JvmOverloads constructor(
                 Zone.RIGHT -> rightZone
                 Zone.FULL -> fullZone
             }
-            val sizePx = (zone.width().coerceAtMost(zone.height()) * spec.sizeFraction).toInt()
+            val defaultSizePx = (zone.width().coerceAtMost(zone.height()) * spec.sizeFraction).toInt()
+            val savedSize = prefs.getFloat("${spec.prefKey}_size", Float.NaN)
+            val sizePx = if (!savedSize.isNaN()) savedSize.toInt() else defaultSizePx
+
             val button = InputOverlayDrawableButton(
                 resources,
                 scaledBitmap(spec.normalRes, sizePx),
@@ -199,14 +231,22 @@ class DsButtonOverlayView @JvmOverloads constructor(
             canvas.drawRect(rightZone, editBorderPaint)
         }
         buttons.forEach { it.draw(canvas) }
+        if (repositionModeEnabled) {
+            for (button in buttons) {
+                val handle = resizeHandleRect(button)
+                canvas.drawRect(handle, resizeHandleFillPaint)
+                canvas.drawRect(handle, resizeHandleBorderPaint)
+            }
+        }
     }
 
-    /** Clears saved positions and re-lays-out at the built-in defaults. */
+    /** Clears saved positions/sizes and re-lays-out at the built-in defaults. */
     fun resetPositions() {
         val editor = prefs.edit()
         for (spec in specs) {
             editor.remove("${spec.prefKey}_x")
             editor.remove("${spec.prefKey}_y")
+            editor.remove("${spec.prefKey}_size")
         }
         editor.apply()
         zonesKnown = false
@@ -291,15 +331,41 @@ class DsButtonOverlayView @JvmOverloads constructor(
 
         when (event.action and MotionEvent.ACTION_MASK) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                if (buttonBeingConfigured == null) {
-                    buttons.firstOrNull { it.bounds.contains(x, y) }?.let {
-                        buttonBeingConfigured = it
-                        it.onConfigureTouch(event)
+                if (buttonBeingConfigured == null && buttonBeingResized == null) {
+                    // Resize handle takes priority: it's a small region
+                    // at the button's own bottom-right corner, so a tap
+                    // there would also satisfy the body's own (larger)
+                    // bounds.contains() check below -- check it first or
+                    // the handle would never actually be reachable.
+                    val resizeTarget = buttons.firstOrNull { resizeHandleRect(it).contains(x, y) }
+                    if (resizeTarget != null) {
+                        buttonBeingResized = resizeTarget
                         invalidate()
+                    } else {
+                        buttons.firstOrNull { it.bounds.contains(x, y) }?.let {
+                            buttonBeingConfigured = it
+                            it.onConfigureTouch(event)
+                            invalidate()
+                        }
                     }
                 }
             }
             MotionEvent.ACTION_MOVE -> {
+                buttonBeingResized?.let {
+                    // Anchor (top-left) stays fixed; size tracks however
+                    // far the touch has moved right/down from it, same
+                    // convention as a corner-resize handle in an image or
+                    // window editor -- whichever axis moved further
+                    // decides the (always-square) new size, so a mostly-
+                    // horizontal or mostly-vertical drag both feel natural.
+                    val anchorX = it.bounds.left
+                    val anchorY = it.bounds.top
+                    val newSize = maxOf(x - anchorX, y - anchorY)
+                        .coerceIn(resizeHandleSizePx, dp(MAX_BUTTON_SIZE_DP))
+                    it.setBounds(anchorX, anchorY, anchorX + newSize, anchorY + newSize)
+                    invalidate()
+                    return true
+                }
                 buttonBeingConfigured?.let {
                     it.onConfigureTouch(event)
                     invalidate()
@@ -307,6 +373,19 @@ class DsButtonOverlayView @JvmOverloads constructor(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                buttonBeingResized?.let {
+                    val spec = specs.first { spec -> spec.id == it.id }
+                    prefs.edit().putFloat("${spec.prefKey}_size", it.bounds.width().toFloat()).apply()
+                    buttonBeingResized = null
+                    // Resizing changes the bitmap's own intrinsic size, not
+                    // just its drawn bounds -- setBounds() during the drag
+                    // just stretches the original-resolution bitmap
+                    // (softer, but fine for a live preview); re-run the
+                    // full layout once to decode it fresh at the final
+                    // size so it's crisp once the gesture is done.
+                    zonesKnown = false
+                    setHousingZones(leftZone, rightZone)
+                }
                 buttonBeingConfigured?.let {
                     val spec = specs.first { spec -> spec.id == it.id }
                     prefs.edit()
@@ -319,5 +398,9 @@ class DsButtonOverlayView @JvmOverloads constructor(
             }
         }
         return true
+    }
+
+    companion object {
+        private const val MAX_BUTTON_SIZE_DP = 260
     }
 }
