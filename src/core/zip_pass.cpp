@@ -7,6 +7,9 @@
 #include "core/hle/kernel/shared_page.h"
 #include <cryptopp/osrng.h>
 #include "core/system_titles.h"
+#ifdef ANDROID
+#include "common/android_utils.h"
+#endif
 
 namespace Core {
 

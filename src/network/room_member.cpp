@@ -15,6 +15,9 @@
 #include "core/zip_pass.h"
 #include "common/file_util.h"
 #include "core/loader/ncch.h"
+#ifdef ANDROID
+#include "common/android_utils.h"
+#endif
 
 namespace Network {
 
