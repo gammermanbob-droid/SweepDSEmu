@@ -224,6 +224,17 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "64";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_scale_hires") == 0) {
+            // Defaults to disabled upstream -- only affects the small
+            // subset of games that switch into a 480i/512i hi-res video
+            // mode, downscaling those to 320x240 by skipping lines/
+            // columns instead of rendering the full resolution. Unlike
+            // gpu_unai_skipline (all games, all the time), this only
+            // does anything for games that already use a hi-res mode,
+            // so there's no real downside for the majority that don't.
+            var->value = "enabled";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
