@@ -163,6 +163,24 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "l3+r3";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_gpu_thread_rendering") == 0 ||
+            strcmp(var->key, "pcsx_rearmed_drc_thread") == 0) {
+            // Both default to "auto" (enable if >=2 CPU cores detected),
+            // but the device log showed pcsx_rearmed's own core-count
+            // detection reporting exactly 1 -- on a New3DS with
+            // CanAccessCore2 set in this app's own exheader (see
+            // package_cia.py), that's wrong, and it means GPU rendering
+            // and the dynarec compiler were both silently staying on
+            // the same thread as everything else instead of actually
+            // using the second core. frontend/3ds/pthread.h's own
+            // pthread_create() already does the right thing when asked
+            // to run a thread at all -- it checks APT_CheckNew3DS
+            // itself and pins new threads to CPU 2 -- so forcing these
+            // on sidesteps the broken "auto" check entirely rather
+            // than needing any threading code of our own.
+            var->value = "enabled";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
