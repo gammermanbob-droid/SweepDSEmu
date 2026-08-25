@@ -231,9 +231,19 @@ void DsSession::BlitFrame(ANativeWindow* surface, const MergedCore::ScreenBuffer
     const int copy_width = std::min(buffer.width, window_buffer.width);
     auto* dst = reinterpret_cast<uint8_t*>(window_buffer.bits);
     const auto* src = reinterpret_cast<const uint8_t*>(buffer.pixels.data());
+    // melonDS's software renderer packs pixels as B,G,R,A in memory (see
+    // upstream GPU_Soft.cpp), but the ANativeWindow buffer here is declared
+    // WINDOW_FORMAT_RGBA_8888 (R,G,B,A). A raw memcpy would silently swap
+    // the red and blue channels, so swap them back per pixel while copying.
     for (int y = 0; y < copy_height; ++y) {
-        std::memcpy(dst + y * window_buffer.stride * 4, src + y * buffer.width * 4,
-                   copy_width * 4);
+        const uint8_t* src_row = src + y * buffer.width * 4;
+        uint8_t* dst_row = dst + y * window_buffer.stride * 4;
+        for (int x = 0; x < copy_width; ++x) {
+            dst_row[x * 4 + 0] = src_row[x * 4 + 2];
+            dst_row[x * 4 + 1] = src_row[x * 4 + 1];
+            dst_row[x * 4 + 2] = src_row[x * 4 + 0];
+            dst_row[x * 4 + 3] = src_row[x * 4 + 3];
+        }
     }
     ANativeWindow_unlockAndPost(surface);
 }
