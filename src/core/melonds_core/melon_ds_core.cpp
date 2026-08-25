@@ -110,6 +110,39 @@ fs::path ToRealPath(fs::path virtualPath) {
 #endif
 }
 
+// melonDS's own SysDataDir convention (the desktop Qt frontend's own
+// BIOS/firmware folder) is the primary, first-checked location -- but
+// a lot of users already have DS/DSi BIOS dumps sitting wherever their
+// existing SD card / homebrew setup put them (the SD root itself,
+// _nds/, or a plain "bios" folder are all common conventions across
+// other DS emulators and flashcart menus), and previously any of those
+// being one folder off meant a silent, unexplained fall-back to
+// FreeBIOS/DS-only mode instead of the real BIOS the user actually
+// has. Checked in this order for every system file this function
+// looks for, so wherever an existing setup already has them just
+// works without needing to duplicate/move anything.
+std::vector<fs::path> SystemFileSearchDirs() {
+    const fs::path sysdata = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)));
+    const fs::path sdmc = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)));
+    return {
+        sysdata,
+        sdmc,
+        sdmc / "_nds",
+        sdmc / "bios",
+    };
+}
+
+fs::path FindSystemFile(const std::vector<fs::path>& searchDirs, const char* filename) {
+    for (const fs::path& dir : searchDirs) {
+        fs::path candidate = dir / filename;
+        std::error_code ec;
+        if (fs::is_regular_file(candidate, ec)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
 // Some Android storage backends -- particularly FUSE-mediated scoped
 // storage, which mediates access to shared/external folders an app
 // doesn't have direct raw filesystem access to -- don't support
@@ -244,13 +277,14 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // the "just works" experience Azahar aims for with 3DS titles.
     // NDSArgs already defaults ARM9BIOS/ARM7BIOS/Firmware to
     // FreeBIOS + generated firmware, so the fallback case needs no
-    // extra code here — just leave `args` alone.
-    fs::path sysdata = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)));
-    fs::path bios9 = sysdata / "bios9.bin";
-    fs::path bios7 = sysdata / "bios7.bin";
-    fs::path firmware = sysdata / "firmware.bin";
+    // extra code here — just leave `args` alone. See SystemFileSearchDirs()
+    // for why this checks more than just melonDS's own SysDataDir.
+    const std::vector<fs::path> searchDirs = SystemFileSearchDirs();
+    fs::path bios9 = FindSystemFile(searchDirs, "bios9.bin");
+    fs::path bios7 = FindSystemFile(searchDirs, "bios7.bin");
+    fs::path firmware = FindSystemFile(searchDirs, "firmware.bin");
 
-    if (fs::exists(bios9) && fs::exists(bios7) && fs::exists(firmware)) {
+    if (!bios9.empty() && !bios7.empty() && !firmware.empty()) {
         melonDS::ARM9BIOSImage bios9data{};
         melonDS::ARM7BIOSImage bios7data{};
         std::vector<uint8_t> firmwaredata = ReadWholeFile(firmware);
@@ -279,14 +313,14 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     std::vector<uint8_t> dsi_firmwaredata;
     std::optional<melonDS::DSi_NAND::NANDImage> dsi_nand;
 
-    if (fs::exists(bios9) && fs::exists(bios7) && fs::exists(firmware)) {
-        fs::path dsi_bios9_path = sysdata / "dsi_bios9.bin";
-        fs::path dsi_bios7_path = sysdata / "dsi_bios7.bin";
-        fs::path dsi_firmware_path = sysdata / "dsi_firmware.bin";
-        fs::path dsi_nand_path = sysdata / "dsi_nand.bin";
+    if (!bios9.empty() && !bios7.empty() && !firmware.empty()) {
+        fs::path dsi_bios9_path = FindSystemFile(searchDirs, "dsi_bios9.bin");
+        fs::path dsi_bios7_path = FindSystemFile(searchDirs, "dsi_bios7.bin");
+        fs::path dsi_firmware_path = FindSystemFile(searchDirs, "dsi_firmware.bin");
+        fs::path dsi_nand_path = FindSystemFile(searchDirs, "dsi_nand.bin");
 
-        if (fs::exists(dsi_bios9_path) && fs::exists(dsi_bios7_path) &&
-            fs::exists(dsi_firmware_path) && fs::exists(dsi_nand_path)) {
+        if (!dsi_bios9_path.empty() && !dsi_bios7_path.empty() &&
+            !dsi_firmware_path.empty() && !dsi_nand_path.empty()) {
             melonDS::DSiBIOSImage bios9i_data{};
             melonDS::DSiBIOSImage bios7i_data{};
             dsi_firmwaredata = ReadWholeFile(dsi_firmware_path);
