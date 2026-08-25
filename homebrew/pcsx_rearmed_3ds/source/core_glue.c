@@ -235,6 +235,16 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "enabled";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_gpu_unai_old_renderer") == 0) {
+            // Live toggle (see settings.h), off by default -- unlike
+            // skipline's well-understood "every 2nd line" effect,
+            // upstream only documents this as "faster, but less
+            // accurate" without saying how, so it needs to be
+            // switchable per-preference rather than assumed safe to
+            // force on for everyone.
+            var->value = settingsGetOldRenderer() ? "enabled" : "disabled";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 

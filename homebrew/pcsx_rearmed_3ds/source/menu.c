@@ -325,8 +325,8 @@ bool menuPause(void) {
 }
 
 void menuSettings(void) {
-    enum { ROW_BIOS, ROW_DISPLAY, ROW_SKIPLINE, ROW_COUNT };
-    const float kBiosRowY = 44.0f, kDisplayRowY = 84.0f, kSkipLineRowY = 124.0f;
+    enum { ROW_BIOS, ROW_DISPLAY, ROW_SKIPLINE, ROW_OLDRENDERER, ROW_COUNT };
+    const float kBiosRowY = 44.0f, kDisplayRowY = 84.0f, kSkipLineRowY = 124.0f, kOldRendererRowY = 164.0f;
 
     int selected = ROW_BIOS;
 
@@ -352,6 +352,9 @@ void menuSettings(void) {
             } else if (ty >= kSkipLineRowY && ty < kSkipLineRowY + kRowHeight) {
                 selected = ROW_SKIPLINE;
                 toggle = true;
+            } else if (ty >= kOldRendererRowY && ty < kOldRendererRowY + kRowHeight) {
+                selected = ROW_OLDRENDERER;
+                toggle = true;
             }
         }
         if (toggle) {
@@ -359,8 +362,10 @@ void menuSettings(void) {
                 settingsSetForceHle(!settingsGetForceHle());
             } else if (selected == ROW_DISPLAY) {
                 settingsSetDisplayOnBottom(!settingsGetDisplayOnBottom());
-            } else {
+            } else if (selected == ROW_SKIPLINE) {
                 settingsSetSkipLines(!settingsGetSkipLines());
+            } else {
+                settingsSetOldRenderer(!settingsGetOldRenderer());
             }
         }
         if (inputMenuBackPressed()) {
@@ -382,9 +387,12 @@ void menuSettings(void) {
         videoDrawMenuText(settingsGetSkipLines() ? "   Faster (skips every 2nd line)" :
             "   Full quality", 8, kSkipLineRowY, 0.42f);
 
-        videoDrawMenuText("A real BIOS dump goes in:", 8, 160, 0.38f);
-        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/ (e.g. scph1001.bin)", 8, 172, 0.34f);
-        videoDrawMenuText("Auto finds it there, falls back to HLE if missing.", 8, 184, 0.34f);
+        videoDrawMenuText(selected == ROW_OLDRENDERER ? "> Renderer (experimental):" : "  Renderer (experimental):",
+            8, 148, 0.45f);
+        videoDrawMenuText(settingsGetOldRenderer() ? "   Old (faster, may glitch)" : "   Normal",
+            8, kOldRendererRowY, 0.42f);
+
+        videoDrawMenuText("BIOS dump goes in sdmc:/3ds/pcsx_rearmed_3ds/system/", 8, 188, 0.32f);
 
         videoDrawMenuText("Tap a setting, or:", 8, 204, 0.38f);
         videoDrawMenuText("A/Up/Down: Select+Toggle   B: Back", 8, 220, 0.4f);

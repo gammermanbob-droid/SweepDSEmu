@@ -14,11 +14,13 @@
 static bool s_forceHle;
 static bool s_displayOnBottom;
 static bool s_skipLines;
+static bool s_oldRenderer;
 
 void settingsLoad(void) {
     s_forceHle = false;
     s_displayOnBottom = false;
     s_skipLines = true;
+    s_oldRenderer = false;
 
     FILE* f = fopen(SETTINGS_PATH, "r");
     if (!f) {
@@ -37,6 +39,8 @@ void settingsLoad(void) {
             s_displayOnBottom = value != 0;
         } else if (strcmp(key, "skip_lines") == 0) {
             s_skipLines = value != 0;
+        } else if (strcmp(key, "old_renderer") == 0) {
+            s_oldRenderer = value != 0;
         }
     }
     fclose(f);
@@ -52,6 +56,7 @@ static void save(void) {
     fprintf(f, "force_hle=%d\n", s_forceHle ? 1 : 0);
     fprintf(f, "display_on_bottom=%d\n", s_displayOnBottom ? 1 : 0);
     fprintf(f, "skip_lines=%d\n", s_skipLines ? 1 : 0);
+    fprintf(f, "old_renderer=%d\n", s_oldRenderer ? 1 : 0);
     fclose(f);
 }
 
@@ -79,5 +84,14 @@ bool settingsGetSkipLines(void) {
 
 void settingsSetSkipLines(bool skip) {
     s_skipLines = skip;
+    save();
+}
+
+bool settingsGetOldRenderer(void) {
+    return s_oldRenderer;
+}
+
+void settingsSetOldRenderer(bool old) {
+    s_oldRenderer = old;
     save();
 }

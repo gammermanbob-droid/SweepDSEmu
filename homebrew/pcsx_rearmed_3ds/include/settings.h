@@ -34,3 +34,13 @@ void settingsSetDisplayOnBottom(bool bottom);
 // doesn't feel worth it.
 bool settingsGetSkipLines(void);
 void settingsSetSkipLines(bool skip);
+
+// false (default): pcsx_rearmed's normal GPU_UNAI renderer. true:
+// switches to its alternate "old renderer" code path -- upstream docs
+// call it "faster, but less accurate" without saying exactly how, so
+// unlike skip-lines this one's visual impact isn't well understood
+// ahead of time. Off by default for that reason; a live toggle so it
+// can be tried and reverted per-preference without a new build either
+// way.
+bool settingsGetOldRenderer(void);
+void settingsSetOldRenderer(bool old);
