@@ -155,8 +155,19 @@ def main():
                 # 178MB extended pool via SystemModeExt on top of that.
                 "-DAPP_SYSTEM_MODE=96MB",
                 "-DAPP_SYSTEM_MODE_EXT=178MB",
-                "-DAPP_CPU_SPEED=268MHz",
-                "-DAPP_ENABLE_L2_CACHE=false",
+                # main.c already calls osSetSpeedupEnable(true) during
+                # gameplay to request New3DS's CPU clock boost -- but
+                # that request only has anything to boost *to* if the
+                # CIA's own exheader actually declares New3DS speed
+                # support in the first place. Declaring 804MHz here
+                # does nothing on Old3DS (the OS only applies the boost
+                # on New3DS hardware regardless of what's declared) but
+                # is up to 3x the CPU clock on New3DS -- easily the
+                # single biggest lever available for a GPU_UNAI
+                # (software-rendered) PS1 core with no hardware 3D
+                # acceleration to fall back on.
+                "-DAPP_CPU_SPEED=804MHz",
+                "-DAPP_ENABLE_L2_CACHE=true",
                 "-DAPP_VERSION_MAJOR=1",
             ],
             check=True,

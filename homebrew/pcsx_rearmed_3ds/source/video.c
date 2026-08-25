@@ -230,18 +230,20 @@ void videoDrawAnalogToggle(bool enabled) {
     // at nearly the full circle's size left almost no state color
     // showing, so the red/gray distinction is a dedicated OUTER RING
     // here instead of a fill color the logo would mostly cover: white
-    // outline, then the state color as a ring, then a fixed dark disc
-    // behind the logo so it reads the same regardless of state.
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.2f, kAnalogToggleRadius + 6,
+    // outline, then a *thick* state-color ring (still reportedly too
+    // hard to see at the previous size/thickness -- bigger badge,
+    // bigger ring, smaller inner disc this time), then a fixed dark
+    // disc behind the logo so it reads the same regardless of state.
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.2f, kAnalogToggleRadius + 10,
         C2D_Color32(255, 255, 255, 255));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 2,
-        enabled ? C2D_Color32(160, 40, 15, 255) : C2D_Color32(80, 80, 90, 200));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius - 6,
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 6,
+        enabled ? C2D_Color32(200, 20, 20, 255) : C2D_Color32(80, 80, 90, 200));
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius - 10,
         C2D_Color32(20, 20, 25, 255));
 
     // PlayStation logo badge, centered inside the dark disc -- small
     // enough that the ring around it stays clearly visible.
-    const float logoSize = (kAnalogToggleRadius - 6) * 1.2f;
+    const float logoSize = (kAnalogToggleRadius - 10) * 1.3f;
     float scale = logoSize / s_analogLogo.subtex->width;
     C2D_DrawImageAt(s_analogLogo, kAnalogToggleX - logoSize / 2.0f, kAnalogToggleY - logoSize / 2.0f,
         0.5f, NULL, scale, scale);

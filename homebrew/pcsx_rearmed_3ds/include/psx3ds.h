@@ -65,8 +65,8 @@ void videoEndFrame(void);
 // video.c (drawing) and main.c (touch hit-testing) so they can't drift
 // apart.
 #define kAnalogToggleX 160.0f
-#define kAnalogToggleY 204.0f
-#define kAnalogToggleRadius 22.0f
+#define kAnalogToggleY 208.0f
+#define kAnalogToggleRadius 30.0f
 
 // audio.c
 bool audioInit(void);
