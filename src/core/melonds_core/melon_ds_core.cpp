@@ -110,6 +110,36 @@ fs::path ToRealPath(fs::path virtualPath) {
 #endif
 }
 
+// Some Android storage backends -- particularly FUSE-mediated scoped
+// storage, which mediates access to shared/external folders an app
+// doesn't have direct raw filesystem access to -- don't support
+// symlink() at all; the call fails, but BuildHomebrewSDCardRoot()'s
+// previous version never checked the error code, so `link` was simply
+// left missing with no diagnostic. Since melonDS's own FATStorage scan
+// (FATStorage::ImportDirectory) only ever sees what's actually present
+// under `root`, a missing `_nds` symlink here means every file under
+// it -- no matter how deep, e.g. TWiLightMenu++'s own
+// _nds/TWiLightMenu/main.srldr -- is completely invisible to the
+// emulated DS, regardless of whether it exists on the real device.
+// Falls back to an actual recursive copy in that case; update_existing
+// means this only copies new/changed files on repeat calls (this
+// function runs on every homebrew boot), not a full re-copy each time.
+void LinkOrCopyDirectory(const fs::path& target, const fs::path& link) {
+    std::error_code ec;
+    if (fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
+        return; // already a valid symlink from a previous run
+    }
+    fs::remove(link, ec);
+    fs::create_directory_symlink(target, link, ec);
+    if (!ec && fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
+        return; // symlink succeeded and actually verifies
+    }
+
+    fs::remove_all(link, ec);
+    fs::create_directories(link, ec);
+    fs::copy(target, link, fs::copy_options::recursive | fs::copy_options::update_existing, ec);
+}
+
 fs::path BuildHomebrewSDCardRoot() {
     const fs::path sdmc = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)));
     const fs::path root =
@@ -121,13 +151,7 @@ fs::path BuildHomebrewSDCardRoot() {
         const fs::path target = sdmc / name;
         if (!fs::is_directory(target, ec))
             continue;
-
-        const fs::path link = root / name;
-        if (fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target)
-            continue;
-
-        fs::remove(link, ec);
-        fs::create_directory_symlink(target, link, ec);
+        LinkOrCopyDirectory(target, root / name);
     }
 
     // MoonShell2 specifically insists its own "moonshl2" resource
@@ -142,11 +166,7 @@ fs::path BuildHomebrewSDCardRoot() {
     {
         const fs::path moonshell_target = sdmc / "roms" / "nds" / "moonshl2";
         if (fs::is_directory(moonshell_target, ec)) {
-            const fs::path link = root / "moonshl2";
-            if (!(fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == moonshell_target)) {
-                fs::remove(link, ec);
-                fs::create_directory_symlink(moonshell_target, link, ec);
-            }
+            LinkOrCopyDirectory(moonshell_target, root / "moonshl2");
         }
     }
 
