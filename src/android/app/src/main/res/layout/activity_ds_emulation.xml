@@ -13,35 +13,42 @@
     android:layout_height="match_parent"
     android:keepScreenOn="true">
 
+    <!-- surface_ds_top/bottom are direct children (not nested in a
+         LinearLayout like this used to be) because their exact size and
+         position are computed and applied at runtime by
+         DsEmulationActivity.layoutDsScreens(): ANativeWindow_setBuffersGeometry
+         (ds_native.cpp) fixes each surface's buffer at the DS's native
+         256x192, and the system compositor stretches that buffer to
+         whatever the SurfaceView's own laid-out bounds are, so a
+         LinearLayout weight=1 split (this file's previous approach)
+         meant each screen filled its full half-container regardless of
+         aspect ratio, squashing/stretching the image and leaving no
+         free space anywhere for the button overlay. The placeholder
+         0x0 layout_width/height here just avoids a one-frame flash of
+         full-screen-stretched content before that first runs. -->
     <FrameLayout
+        android:id="@+id/ds_content_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@android:color/black">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
+        <SurfaceView
+            android:id="@+id/surface_ds_top"
+            android:layout_width="0dp"
+            android:layout_height="0dp" />
 
-            <SurfaceView
-                android:id="@+id/surface_ds_top"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <SurfaceView
-                android:id="@+id/surface_ds_bottom"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-        </LinearLayout>
+        <SurfaceView
+            android:id="@+id/surface_ds_bottom"
+            android:layout_width="0dp"
+            android:layout_height="0dp" />
 
         <!-- Touch button overlay populated programmatically in
              DsEmulationActivity, reusing the same button artwork as the
              3DS side's InputOverlay (see buildButtonOverlay's doc
-             comment) in a fixed (non-draggable, non-per-game-
-             configurable) layout. -->
+             comment). Buttons default into the housing zones
+             layoutDsScreens() computes on either side of the (now
+             aspect-correct) screens, and can be dragged anywhere via
+             the overlay options menu's "Edit Layout" entry. -->
         <FrameLayout
             android:id="@+id/ds_button_overlay"
             android:layout_width="match_parent"

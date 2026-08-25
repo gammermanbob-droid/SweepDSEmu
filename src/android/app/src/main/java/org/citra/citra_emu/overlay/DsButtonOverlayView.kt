@@ -9,6 +9,9 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -32,59 +35,79 @@ import org.citra.citra_emu.R
  * 3DS's own button set (circle pad, C-stick, ZL/ZR, swap/turbo/combo)
  * and per-button scale menu, none of which apply here -- DS only has
  * the eight face/shoulder/start-select buttons this draws.
+ *
+ * Default positions come from "housing zones" -- see
+ * DsEmulationActivity.layoutDsScreens() -- rather than fixed corner
+ * margins, since the DS screens are no longer stretched to fill the
+ * whole display and buttons need to default into whatever's actually
+ * left over on either side instead of sitting on top of the screens.
  */
 class DsButtonOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    private enum class Zone {
+        LEFT, RIGHT,
+        // L/R/Select/Start default to small corner floaters against the
+        // *full* overlay (like the HOME button always has), not housed
+        // inside the left/right squares -- those squares are sized for
+        // the d-pad and face-button diamond alone; fitting four more
+        // buttons in without overlapping either of those would mean
+        // shrinking everything to the point of being fiddly to tap.
+        FULL
+    }
+
     private data class Spec(
         val id: Int,
         val prefKey: String,
         val normalRes: Int,
         val pressedRes: Int,
-        val sizeDp: Int,
-        val defaultPosition: (viewW: Int, viewH: Int, sizePx: Int) -> Pair<Int, Int>
+        val zone: Zone,
+        // Fraction of the reference area's own (square, for LEFT/RIGHT;
+        // shorter side, for FULL) side length -- scales with whatever
+        // room is actually available instead of a fixed dp size, since
+        // both zone size and window size vary a lot.
+        val sizeFraction: Float,
+        // Fraction of the reference area's width/height for the
+        // button's top-left corner, 0..1 -- e.g. (0.5f - sizeFraction/2, 0f)
+        // centers a button horizontally flush against the top edge.
+        val position: (sizeFraction: Float) -> Pair<Float, Float>
+    )
+
+    private val specs: List<Spec> = listOf(
+        Spec(NativeLibrary.DsButtonType.BUTTON_L, "ds_overlay_l", R.drawable.button_l,
+            R.drawable.button_l_pressed, Zone.FULL, 0.09f) { s -> Pair(0.02f, 0.02f) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_R, "ds_overlay_r", R.drawable.button_r,
+            R.drawable.button_r_pressed, Zone.FULL, 0.09f) { s -> Pair(1f - 0.02f - s, 0.02f) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_SELECT, "ds_overlay_select", R.drawable.button_select,
+            R.drawable.button_select_pressed, Zone.FULL, 0.08f) { s -> Pair(0.02f, 1f - 0.02f - s) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_START, "ds_overlay_start", R.drawable.button_start,
+            R.drawable.button_start_pressed, Zone.FULL, 0.08f) { s -> Pair(1f - 0.02f - s, 1f - 0.02f - s) },
+        // Face buttons: a diamond centered in the right zone, same
+        // relative Y-top/A-left/B-right/X-bottom shape the very first
+        // version of this overlay used (see git history) -- kept as-is
+        // rather than "corrected" to a real DS's actual X-top/Y-left/
+        // A-right/B-bottom layout, since changing established button
+        // positions wasn't asked for and would just retrain muscle memory
+        // for no real benefit.
+        Spec(NativeLibrary.DsButtonType.BUTTON_Y, "ds_overlay_y", R.drawable.button_y,
+            R.drawable.button_y_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - s / 2f, 0.5f - 0.22f - s / 2f) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_A, "ds_overlay_a", R.drawable.button_a,
+            R.drawable.button_a_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - 0.22f - s / 2f, 0.5f - s / 2f) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_B, "ds_overlay_b", R.drawable.button_b,
+            R.drawable.button_b_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f + 0.22f - s / 2f, 0.5f - s / 2f) },
+        Spec(NativeLibrary.DsButtonType.BUTTON_X, "ds_overlay_x", R.drawable.button_x,
+            R.drawable.button_x_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - s / 2f, 0.5f + 0.22f - s / 2f) }
     )
 
     private val prefs: SharedPreferences =
         PreferenceManager.getDefaultSharedPreferences(context)
 
-    // Same dp constants and corner placements DsEmulationActivity's own
-    // buildButtonOverlay used to lay these out with, just expressed as a
-    // default-position function of this view's own size instead of
-    // FrameLayout gravity+margins -- only used the first time a button
-    // is drawn (i.e. no saved position yet); every touch/drag through
-    // this class persists its own position afterward.
-    private val specs: List<Spec> by lazy {
-        val faceSize = 64
-        val faceGap = 8
-        listOf(
-            Spec(NativeLibrary.DsButtonType.BUTTON_Y, "ds_overlay_y", R.drawable.button_y,
-                R.drawable.button_y_pressed, faceSize) { w, _, s -> Pair(w - dp(faceSize + faceGap) - s, 0) },
-            Spec(NativeLibrary.DsButtonType.BUTTON_A, "ds_overlay_a", R.drawable.button_a,
-                R.drawable.button_a_pressed, faceSize) { w, _, s ->
-                Pair(w - dp(2 * faceSize + 2 * faceGap) - s, dp(faceSize + faceGap))
-            },
-            Spec(NativeLibrary.DsButtonType.BUTTON_B, "ds_overlay_b", R.drawable.button_b,
-                R.drawable.button_b_pressed, faceSize) { w, _, s -> Pair(w - s, dp(faceSize + faceGap)) },
-            Spec(NativeLibrary.DsButtonType.BUTTON_X, "ds_overlay_x", R.drawable.button_x,
-                R.drawable.button_x_pressed, faceSize) { w, _, s ->
-                Pair(w - dp(faceSize + faceGap) - s, dp(2 * faceSize + 2 * faceGap))
-            },
-            Spec(NativeLibrary.DsButtonType.BUTTON_L, "ds_overlay_l", R.drawable.button_l,
-                R.drawable.button_l_pressed, 56) { _, _, _ -> Pair(dp(16), dp(16)) },
-            Spec(NativeLibrary.DsButtonType.BUTTON_R, "ds_overlay_r", R.drawable.button_r,
-                R.drawable.button_r_pressed, 56) { w, _, s -> Pair(w - dp(16) - s, dp(16)) },
-            Spec(NativeLibrary.DsButtonType.BUTTON_SELECT, "ds_overlay_select", R.drawable.button_select,
-                R.drawable.button_select_pressed, 48) { _, h, s -> Pair(dp(16), h - dp(16) - s) },
-            Spec(NativeLibrary.DsButtonType.BUTTON_START, "ds_overlay_start", R.drawable.button_start,
-                R.drawable.button_start_pressed, 48) { w, h, s -> Pair(w - dp(16) - s, h - dp(16) - s) }
-        )
-    }
-
     private val buttons = mutableListOf<InputOverlayDrawableButton>()
-    private var laidOut = false
+    private var leftZone = Rect()
+    private var rightZone = Rect()
+    private var zonesKnown = false
 
     var repositionModeEnabled = false
         set(value) {
@@ -93,21 +116,55 @@ class DsButtonOverlayView @JvmOverloads constructor(
         }
     private var buttonBeingConfigured: InputOverlayDrawableButton? = null
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    // Edit mode has to be visually unmistakable -- a translucent tint
+    // plus a border around each housing zone -- since a silent mode
+    // toggle with no on-screen feedback makes it impossible to tell
+    // whether dragging isn't working or edit mode just never actually
+    // turned on in the first place.
+    private val editTintPaint = Paint().apply { color = Color.argb(60, 0, 150, 255) }
+    private val editBorderPaint = Paint().apply {
+        color = Color.argb(200, 0, 150, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
 
     private fun scaledBitmap(resId: Int, sizePx: Int): Bitmap {
         val original = BitmapFactory.decodeResource(resources, resId)
-        return Bitmap.createScaledBitmap(original, sizePx, sizePx, true)
+        return Bitmap.createScaledBitmap(original, sizePx.coerceAtLeast(1), sizePx.coerceAtLeast(1), true)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (laidOut || w <= 0 || h <= 0) return
-        laidOut = true
+    /**
+     * Called by DsEmulationActivity.layoutDsScreens() whenever the
+     * screen layout (and therefore the housing zones) is computed or
+     * recomputed. Buttons with a saved dragged position keep it;
+     * buttons without one are (re-)placed using [Spec.position] against
+     * whichever zone actually changed size, so rotating the device
+     * doesn't silently undo a drag.
+     */
+    fun setHousingZones(left: Rect, right: Rect) {
+        if (zonesKnown && left == leftZone && right == rightZone) {
+            return // no actual change -- avoid redundant relayout on every layout pass
+        }
+        leftZone = left
+        rightZone = right
+        zonesKnown = true
+
+        // FULL specs (L/R/Select/Start) reference the whole overlay's
+        // own bounds rather than either housing square -- this view is
+        // already MATCH_PARENT, so its own width/height (available once
+        // it's been laid out at least once, which it always has been by
+        // the time setHousingZones() first runs from layoutDsScreens())
+        // is exactly that reference area.
+        val fullZone = Rect(0, 0, width, height)
 
         buttons.clear()
         for (spec in specs) {
-            val sizePx = dp(spec.sizeDp)
+            val zone = when (spec.zone) {
+                Zone.LEFT -> leftZone
+                Zone.RIGHT -> rightZone
+                Zone.FULL -> fullZone
+            }
+            val sizePx = (zone.width().coerceAtMost(zone.height()) * spec.sizeFraction).toInt()
             val button = InputOverlayDrawableButton(
                 resources,
                 scaledBitmap(spec.normalRes, sizePx),
@@ -115,20 +172,32 @@ class DsButtonOverlayView @JvmOverloads constructor(
                 spec.id,
                 217 // ~0.85 alpha, matching the previous ImageButton's alpha=0.85f
             )
+
             val savedX = prefs.getFloat("${spec.prefKey}_x", Float.NaN)
             val savedY = prefs.getFloat("${spec.prefKey}_y", Float.NaN)
             val (x, y) = if (!savedX.isNaN() && !savedY.isNaN()) {
                 Pair(savedX.toInt(), savedY.toInt())
             } else {
-                spec.defaultPosition(w, h, sizePx)
+                val (fx, fy) = spec.position(spec.sizeFraction)
+                Pair(
+                    zone.left + (zone.width() * fx).toInt(),
+                    zone.top + (zone.height() * fy).toInt()
+                )
             }
             button.setBounds(x, y, x + sizePx, y + sizePx)
             button.setPosition(x, y)
             buttons.add(button)
         }
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (repositionModeEnabled) {
+            canvas.drawRect(leftZone, editTintPaint)
+            canvas.drawRect(leftZone, editBorderPaint)
+            canvas.drawRect(rightZone, editTintPaint)
+            canvas.drawRect(rightZone, editBorderPaint)
+        }
         buttons.forEach { it.draw(canvas) }
     }
 
@@ -140,9 +209,8 @@ class DsButtonOverlayView @JvmOverloads constructor(
             editor.remove("${spec.prefKey}_y")
         }
         editor.apply()
-        laidOut = false
-        onSizeChanged(width, height, width, height)
-        invalidate()
+        zonesKnown = false
+        setHousingZones(leftZone, rightZone)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -227,6 +295,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
                     buttons.firstOrNull { it.bounds.contains(x, y) }?.let {
                         buttonBeingConfigured = it
                         it.onConfigureTouch(event)
+                        invalidate()
                     }
                 }
             }
@@ -245,6 +314,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
                         .putFloat("${spec.prefKey}_y", it.bounds.top.toFloat())
                         .apply()
                     buttonBeingConfigured = null
+                    invalidate()
                 }
             }
         }

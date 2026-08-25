@@ -4,6 +4,7 @@
 
 package org.citra.citra_emu.activities
 
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -270,20 +271,13 @@ class DsEmulationActivity : AppCompatActivity() {
     // showOverlayMenu/setUpInGameMenu), matching the 3DS side's own
     // "Edit Layout" option.
     private lateinit var dsButtonOverlayView: DsButtonOverlayView
+    private lateinit var dsDpadView: DsDpadView
 
     private fun buildButtonOverlay() {
         val overlay = binding.dsButtonOverlay
 
-        val dpad = DsDpadView(this)
-        val dpadSize = dpToPx(168)
-        overlay.addView(
-            dpad,
-            FrameLayout.LayoutParams(dpadSize, dpadSize).apply {
-                gravity = Gravity.TOP or Gravity.START
-                leftMargin = dpToPx(24)
-                topMargin = dpToPx(16)
-            }
-        )
+        dsDpadView = DsDpadView(this)
+        overlay.addView(dsDpadView, FrameLayout.LayoutParams(0, 0)) // sized/positioned by layoutDsScreens()
 
         dsButtonOverlayView = DsButtonOverlayView(this)
         overlay.addView(dsButtonOverlayView, FrameLayout.LayoutParams(
@@ -293,7 +287,11 @@ class DsEmulationActivity : AppCompatActivity() {
         // as the Android back button on the 3DS side (EmulationFragment
         // toggles binding.drawerLayout there), not a direct shortcut to
         // closing the game; "Exit" inside that menu covers that instead,
-        // matching menu_in_game.xml's own menu_exit entry.
+        // matching menu_in_game.xml's own menu_exit entry. Deliberately
+        // NOT part of the housing-zone layout below -- it's a floating
+        // control overlaid on the game view itself (matching how the
+        // physical HOME button sits below a real 3DS's own screens),
+        // not a gameplay button that needs to avoid the screens.
         val homeButton = ImageButton(this).apply {
             setImageResource(R.drawable.button_home)
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -318,9 +316,90 @@ class DsEmulationActivity : AppCompatActivity() {
                 bottomMargin = dpToPx(16)
             }
         )
+
+        setUpScreenLayout()
     }
 
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
+
+    // --- Screen layout ---
+    //
+    // ds_native.cpp fixes each SurfaceView's buffer at the DS's native
+    // 256x192 via ANativeWindow_setBuffersGeometry; the system
+    // compositor then stretches that fixed-size buffer to whatever the
+    // SurfaceView's own laid-out bounds are. This used to be a
+    // LinearLayout weight=1 vertical split (match_parent width, half
+    // height each), which squashed/stretched the image on any window
+    // that wasn't already exactly the right proportions -- true on
+    // almost every real device -- and left literally no free space
+    // anywhere for the button overlay, since the screens claimed 100%
+    // of both dimensions between them.
+    //
+    // This computes an actual 4:3 rect for each screen instead, with a
+    // gap between them approximating a real DS's hinge (SCREEN_GAP_FRACTION
+    // -- a deliberate visual approximation scaled to the window, not a
+    // claimed precise hardware measurement) and exposes the leftover
+    // width on either side as square "housing zones" the button overlay
+    // (see DsButtonOverlayView.setHousingZones) defaults its buttons
+    // into, so they land beside the screens instead of on top of them.
+    private var lastContainerW = -1
+    private var lastContainerH = -1
+
+    private fun setUpScreenLayout() {
+        binding.dsContentContainer.viewTreeObserver.addOnGlobalLayoutListener {
+            val w = binding.dsContentContainer.width
+            val h = binding.dsContentContainer.height
+            if (w <= 0 || h <= 0 || (w == lastContainerW && h == lastContainerH)) {
+                return@addOnGlobalLayoutListener
+            }
+            lastContainerW = w
+            lastContainerH = h
+            layoutDsScreens(w, h)
+        }
+    }
+
+    private fun layoutDsScreens(containerW: Int, containerH: Int) {
+        val gapPx = (containerH * SCREEN_GAP_FRACTION).toInt()
+        // Caps each screen's width so there's always at least some
+        // housing zone on each side even on an unusually wide/short
+        // window -- on a typical phone in landscape this cap doesn't
+        // actually kick in; height ends up the limiting dimension and
+        // there's plenty of leftover width regardless.
+        val maxScreenW = (containerW * MAX_SCREEN_WIDTH_FRACTION).toInt()
+        val heightConstrainedW =
+            ((containerH - gapPx) / 2f * kDsScreenWidth / kDsScreenHeight).toInt()
+        val screenW = minOf(heightConstrainedW, maxScreenW).coerceAtLeast(1)
+        val screenH = (screenW.toFloat() * kDsScreenHeight / kDsScreenWidth).toInt().coerceAtLeast(1)
+
+        val totalContentH = 2 * screenH + gapPx
+        val topInset = ((containerH - totalContentH) / 2).coerceAtLeast(0)
+        val screenX = (containerW - screenW) / 2
+
+        binding.surfaceDsTop.layoutParams = FrameLayout.LayoutParams(screenW, screenH).apply {
+            leftMargin = screenX
+            topMargin = topInset
+        }
+        binding.surfaceDsBottom.layoutParams = FrameLayout.LayoutParams(screenW, screenH).apply {
+            leftMargin = screenX
+            topMargin = topInset + screenH + gapPx
+        }
+
+        // "A square" per housing zone, as close as the available gutter
+        // allows -- side length is whichever is smaller of the leftover
+        // width and the full container height, centered vertically.
+        val zoneSide = screenX.coerceAtMost(containerH)
+        val zoneTop = (containerH - zoneSide) / 2
+        val leftZone = Rect(0, zoneTop, zoneSide, zoneTop + zoneSide)
+        val rightZone = Rect(containerW - zoneSide, zoneTop, containerW, zoneTop + zoneSide)
+
+        val dpadSize = (zoneSide * 0.85f).toInt()
+        dsDpadView.layoutParams = FrameLayout.LayoutParams(dpadSize, dpadSize).apply {
+            leftMargin = leftZone.left + (leftZone.width() - dpadSize) / 2
+            topMargin = leftZone.top + (leftZone.height() - dpadSize) / 2
+        }
+
+        dsButtonOverlayView.setHousingZones(leftZone, rightZone)
+    }
 
     /**
      * "Exit" in the in-game drawer menu (see setUpInGameMenu) closes the
@@ -605,6 +684,12 @@ class DsEmulationActivity : AppCompatActivity() {
         private const val kDsScreenWidth = 256
         private const val kDsScreenHeight = 192
         private const val kSaveStateSlotCount = 4
+
+        // See layoutDsScreens()'s own doc comment -- deliberate visual
+        // approximations of a real DS's hinge gap and a sensible
+        // maximum screen width, not precise hardware measurements.
+        private const val SCREEN_GAP_FRACTION = 0.05f
+        private const val MAX_SCREEN_WIDTH_FRACTION = 0.72f
 
         // F12 by default on the Qt frontend (DSControlsConfig); there's no
         // direct KeyEvent equivalent guaranteed present on every Android
