@@ -24,6 +24,7 @@
 #include <android/native_window_jni.h>
 #include <jni.h>
 
+#include "common/android_utils.h"
 #include "common/logging/log.h"
 #include "core/core_factory.h"
 #include "core/emulation_core.h"
@@ -244,6 +245,19 @@ void DsSession::NotifyExit(int result_code) {
 }
 
 void DsSession::Run() {
+    // Paths coming from Android's file picker are either citra's own
+    // "!<real path>" convention (used to route around a missing native
+    // path for a SAF-picked file, see GameHelper.kt/Game.kt) or relative
+    // to the user directory -- FileUtil::IOFile and friends handle this
+    // transparently for every 3DS file access (see
+    // AndroidUtils::TranslateFilePath's callers in common/file_util.cpp),
+    // but melonDS's own file I/O has no idea about any of that, so
+    // without this translation every DS ROM load from the game list
+    // fails silently (CoreFactory::CreateFor can't even sniff the header
+    // of a literal "!/storage/..." path) and the player just bounces
+    // straight back out.
+    rom_path_ = AndroidUtils::TranslateFilePath(rom_path_);
+
     NullEmuWindow window;
     auto core = MergedCore::CoreFactory::CreateFor(rom_path_);
     if (!core) {
