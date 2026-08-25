@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright Citra Emulator Project / Azahar Emulator Project
+     Licensed under GPLv2 or any later version
+     Refer to the license.txt file included. -->
+<!-- The DS side's overlay has no drag-to-reposition/per-button-scale
+     system (see buildButtonOverlay's doc comment on
+     DsEmulationActivity), so this is just the one option out of the
+     3DS side's menu_overlay_options.xml that still applies. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_show_overlay"
+        android:title="@string/emulation_show_controller_overlay"
+        android:checkable="true" />
+
+</menu>

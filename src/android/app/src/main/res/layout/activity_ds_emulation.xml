@@ -2,37 +2,59 @@
 <!-- Copyright Citra Emulator Project / Azahar Emulator Project
      Licensed under GPLv2 or any later version
      Refer to the license.txt file included. -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Same DrawerLayout + NavigationView shape as fragment_emulation.xml's
+     3DS side (see menu_ds_in_game.xml for the DS-appropriate subset of
+     that menu's options), just hosted directly by the Activity instead
+     of a Fragment -- DsEmulationActivity was never fragment-based. -->
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:keepScreenOn="true">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:background="@android:color/black">
 
-        <SurfaceView
-            android:id="@+id/surface_ds_top"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-        <SurfaceView
-            android:id="@+id/surface_ds_bottom"
+            <SurfaceView
+                android:id="@+id/surface_ds_top"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <SurfaceView
+                android:id="@+id/surface_ds_bottom"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+        </LinearLayout>
+
+        <!-- Touch button overlay populated programmatically in
+             DsEmulationActivity, reusing the same button artwork as the
+             3DS side's InputOverlay (see buildButtonOverlay's doc
+             comment) in a fixed (non-draggable, non-per-game-
+             configurable) layout. -->
+        <FrameLayout
+            android:id="@+id/ds_button_overlay"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="match_parent" />
 
-    </LinearLayout>
+    </FrameLayout>
 
-    <!-- Touch button overlay populated programmatically in
-         DsEmulationActivity, reusing the same button artwork as the 3DS
-         side's InputOverlay (see buildButtonOverlay's doc comment) in a
-         fixed (non-draggable, non-per-game-configurable) layout. -->
-    <FrameLayout
-        android:id="@+id/ds_button_overlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/in_game_menu"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        app:headerLayout="@layout/header_in_game"
+        app:menu="@menu/menu_ds_in_game" />
 
-</FrameLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

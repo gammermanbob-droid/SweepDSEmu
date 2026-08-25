@@ -13,13 +13,24 @@ import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.PopupMenu
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.res.ResourcesCompat
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
 import org.citra.citra_emu.display.SecondaryDisplay
+import org.citra.citra_emu.features.settings.ui.SettingsActivity
+import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.overlay.DsDpadView
 
 /**
@@ -41,6 +52,8 @@ class DsEmulationActivity : AppCompatActivity() {
     private var romPath: String = ""
     private var runThread: Thread? = null
     private var isRunning = false
+    private var isPaused = false
+    private var overlayVisible = true
 
     // True once a genuine second physical display is actually in use for
     // the bottom screen (dual-screen handhelds like the AYN Thor or Odin
@@ -92,6 +105,7 @@ class DsEmulationActivity : AppCompatActivity() {
         binding.surfaceDsBottom.setOnTouchListener { _, event -> onBottomScreenTouch(event) }
 
         buildButtonOverlay()
+        setUpInGameMenu()
     }
 
     override fun onDestroy() {
@@ -293,6 +307,11 @@ class DsEmulationActivity : AppCompatActivity() {
         addOverlayButton(overlay, R.drawable.button_start, R.drawable.button_start_pressed, 48,
             Gravity.BOTTOM or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_START)
 
+        // Opens the in-game drawer menu (see setUpInGameMenu) -- same role
+        // as the Android back button on the 3DS side (EmulationFragment
+        // toggles binding.drawerLayout there), not a direct shortcut to
+        // closing the game; "Exit" inside that menu covers that instead,
+        // matching menu_in_game.xml's own menu_exit entry.
         val homeButton = ImageButton(this).apply {
             setImageResource(R.drawable.button_home)
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -302,7 +321,7 @@ class DsEmulationActivity : AppCompatActivity() {
                     MotionEvent.ACTION_DOWN -> setImageResource(R.drawable.button_home_pressed)
                     MotionEvent.ACTION_UP -> {
                         setImageResource(R.drawable.button_home)
-                        confirmReturnToThreeDsHomeMenu()
+                        toggleDrawer()
                     }
                     MotionEvent.ACTION_CANCEL -> setImageResource(R.drawable.button_home)
                 }
@@ -361,9 +380,10 @@ class DsEmulationActivity : AppCompatActivity() {
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     /**
-     * The HOME button (on-screen or physical) closes the current DS game
-     * to return to the emulated 3DS HOME Menu -- confirm first so a
-     * misplaced tap mid-game doesn't lose unsaved progress.
+     * "Exit" in the in-game drawer menu (see setUpInGameMenu) closes the
+     * current DS game and returns to the emulated 3DS HOME Menu --
+     * confirm first so a misplaced tap doesn't lose unsaved progress.
+     * Same shape as EmulationFragment's own menu_exit handler.
      */
     private fun confirmReturnToThreeDsHomeMenu() {
         AlertDialog.Builder(this)
@@ -372,6 +392,140 @@ class DsEmulationActivity : AppCompatActivity() {
             .setPositiveButton(android.R.string.ok) { _, _ -> returnToThreeDsHomeMenu() }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    // --- In-game drawer menu ---
+    //
+    // Same DrawerLayout + NavigationView shape as EmulationFragment's own
+    // in-game menu (see activity_ds_emulation.xml / menu_ds_in_game.xml),
+    // trimmed to what actually applies to a DS session -- no Amiibo,
+    // screen-layout switching, Cheats, or Multiplayer entries, since this
+    // core doesn't support any of those.
+
+    private fun toggleDrawer() {
+        if (binding.drawerLayout.isOpen) {
+            binding.drawerLayout.close()
+        } else {
+            binding.drawerLayout.open()
+        }
+    }
+
+    private fun setUpInGameMenu() {
+        binding.inGameMenu.getHeaderView(0).apply {
+            findViewById<TextView>(R.id.text_game_title).text = gameTitleFromRomPath()
+        }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = toggleDrawer()
+        })
+
+        binding.inGameMenu.setNavigationItemSelectedListener {
+            when (it.itemId) {
+                R.id.menu_emulation_pause -> {
+                    if (isPaused) {
+                        NativeLibrary.dsUnPauseEmulation()
+                        it.title = getString(R.string.pause_emulation)
+                        it.icon = ResourcesCompat.getDrawable(resources, R.drawable.ic_pause, theme)
+                    } else {
+                        NativeLibrary.dsPauseEmulation()
+                        it.title = getString(R.string.resume_emulation)
+                        it.icon = ResourcesCompat.getDrawable(resources, R.drawable.ic_play, theme)
+                    }
+                    isPaused = !isPaused
+                    true
+                }
+                R.id.menu_emulation_savestates -> {
+                    showSaveStateMenu()
+                    true
+                }
+                R.id.menu_overlay_options -> {
+                    showOverlayMenu()
+                    true
+                }
+                R.id.menu_settings -> {
+                    SettingsActivity.launch(this, SettingsFile.FILE_NAME_CONFIG, "")
+                    true
+                }
+                R.id.menu_exit -> {
+                    binding.drawerLayout.close()
+                    confirmReturnToThreeDsHomeMenu()
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
+    private fun gameTitleFromRomPath(): String {
+        val base = romPath.substringAfterLast('/')
+        return base.substringBeforeLast('.').ifEmpty { base }
+    }
+
+    private fun showOverlayMenu() {
+        val popupMenu = PopupMenu(this, binding.inGameMenu.findViewById(R.id.menu_overlay_options))
+        popupMenu.menuInflater.inflate(R.menu.menu_ds_overlay_options, popupMenu.menu)
+        popupMenu.menu.findItem(R.id.menu_show_overlay).isChecked = overlayVisible
+        popupMenu.setOnMenuItemClickListener {
+            if (it.itemId == R.id.menu_show_overlay) {
+                overlayVisible = !overlayVisible
+                binding.dsButtonOverlay.visibility = if (overlayVisible) View.VISIBLE else View.GONE
+            }
+            true
+        }
+        popupMenu.show()
+    }
+
+    // Save states live in this app's own real storage (not any of
+    // Azahar's "sdmc:/..." virtual paths -- MelonDSCore::SaveState/
+    // LoadState take the path given verbatim, no translation, so this
+    // has to already be a genuine filesystem path), one subfolder per
+    // ROM so two games' slots can never collide.
+    private fun saveStateDir(): File {
+        val dir = File(filesDir, "ds_savestates/" + gameTitleFromRomPath())
+        dir.mkdirs()
+        return dir
+    }
+
+    private fun showSaveStateMenu() {
+        val popupMenu = PopupMenu(this, binding.inGameMenu.findViewById(R.id.menu_emulation_savestates))
+        popupMenu.menuInflater.inflate(R.menu.menu_savestates, popupMenu.menu)
+        popupMenu.setOnMenuItemClickListener {
+            when (it.itemId) {
+                R.id.menu_emulation_save_state -> showStateSlotMenu(isSaving = true)
+                R.id.menu_emulation_load_state -> showStateSlotMenu(isSaving = false)
+            }
+            true
+        }
+        popupMenu.show()
+    }
+
+    private fun showStateSlotMenu(isSaving: Boolean) {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        val popupMenu = PopupMenu(this, binding.inGameMenu.findViewById(R.id.menu_emulation_savestates))
+        for (slot in 1..kSaveStateSlotCount) {
+            val file = File(saveStateDir(), "slot$slot.state")
+            val exists = file.exists()
+            val label = if (exists) {
+                "Slot $slot -- ${dateFormat.format(Date(file.lastModified()))}"
+            } else {
+                "Slot $slot -- empty"
+            }
+            popupMenu.menu.add(label).apply {
+                isEnabled = isSaving || exists
+                setOnMenuItemClickListener {
+                    if (isSaving) {
+                        NativeLibrary.dsSaveState(file.absolutePath)
+                        Toast.makeText(this@DsEmulationActivity, "Saving...", Toast.LENGTH_SHORT).show()
+                    } else {
+                        NativeLibrary.dsLoadState(file.absolutePath)
+                        binding.drawerLayout.close()
+                        Toast.makeText(this@DsEmulationActivity, "Loading...", Toast.LENGTH_SHORT).show()
+                    }
+                    true
+                }
+            }
+        }
+        popupMenu.show()
     }
 
     // --- Physical keyboard / Bluetooth controller input ---
@@ -385,7 +539,7 @@ class DsEmulationActivity : AppCompatActivity() {
 
         if (event.keyCode == kReturnToHomeMenuKeyCode) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                confirmReturnToThreeDsHomeMenu()
+                toggleDrawer()
             }
             return true
         }
@@ -491,6 +645,7 @@ class DsEmulationActivity : AppCompatActivity() {
         const val EXTRA_DS_ROM_PATH = "DsRomPath"
         private const val kDsScreenWidth = 256
         private const val kDsScreenHeight = 192
+        private const val kSaveStateSlotCount = 4
 
         // F12 by default on the Qt frontend (DSControlsConfig); there's no
         // direct KeyEvent equivalent guaranteed present on every Android

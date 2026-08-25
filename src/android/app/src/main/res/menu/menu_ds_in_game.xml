@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright Citra Emulator Project / Azahar Emulator Project
+     Licensed under GPLv2 or any later version
+     Refer to the license.txt file included. -->
+<!-- The DS-relevant subset of menu_in_game.xml (the 3DS side's own
+     in-game drawer menu) -- Amiibo, screen-layout switching, Cheats,
+     and Multiplayer don't apply to a DS session, so they're left out
+     rather than wired up to do nothing. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_emulation_pause"
+        android:icon="@drawable/ic_pause"
+        android:title="@string/pause_emulation" />
+
+    <item
+        android:id="@+id/menu_emulation_savestates"
+        android:icon="@drawable/ic_save"
+        android:title="@string/savestates" />
+
+    <item
+        android:id="@+id/menu_overlay_options"
+        android:icon="@drawable/ic_controller"
+        android:title="@string/emulation_overlay_options" />
+
+    <item
+        android:id="@+id/menu_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="@string/preferences_settings" />
+
+    <item
+        android:id="@+id/menu_exit"
+        android:icon="@drawable/ic_exit"
+        android:title="@string/emulation_close_game" />
+
+</menu>
