@@ -225,19 +225,23 @@ void videoDrawMenuText(const char* text, float x, float y, float scale) {
 void videoDrawAnalogToggle(bool enabled) {
     C2D_SceneBegin(s_bottom); // in case drawGameImage() above left the top screen selected
 
-    // Fully opaque with a bright white outline ring so it stays clearly
-    // visible whether it's sitting on a plain background or directly
-    // over a busy game image (see settingsGetDisplayOnBottom). Off:
-    // the original neutral gray. On: a deliberately different shade
-    // of red than the PlayStation logo's own (~222,0,41) so the badge
-    // doesn't just blend into its own background.
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 4,
+    // The PlayStation logo itself is a large, solid, multi-colored
+    // graphic (not a small transparent-background icon) -- drawing it
+    // at nearly the full circle's size left almost no state color
+    // showing, so the red/gray distinction is a dedicated OUTER RING
+    // here instead of a fill color the logo would mostly cover: white
+    // outline, then the state color as a ring, then a fixed dark disc
+    // behind the logo so it reads the same regardless of state.
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.2f, kAnalogToggleRadius + 6,
         C2D_Color32(255, 255, 255, 255));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius,
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 2,
         enabled ? C2D_Color32(160, 40, 15, 255) : C2D_Color32(80, 80, 90, 200));
+    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius - 6,
+        C2D_Color32(20, 20, 25, 255));
 
-    // PlayStation logo badge, centered inside the circle.
-    const float logoSize = kAnalogToggleRadius * 1.5f; // fits with a bit of padding
+    // PlayStation logo badge, centered inside the dark disc -- small
+    // enough that the ring around it stays clearly visible.
+    const float logoSize = (kAnalogToggleRadius - 6) * 1.2f;
     float scale = logoSize / s_analogLogo.subtex->width;
     C2D_DrawImageAt(s_analogLogo, kAnalogToggleX - logoSize / 2.0f, kAnalogToggleY - logoSize / 2.0f,
         0.5f, NULL, scale, scale);

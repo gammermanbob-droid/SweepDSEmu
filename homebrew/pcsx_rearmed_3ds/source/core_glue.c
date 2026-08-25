@@ -101,6 +101,19 @@ static bool environCallback(unsigned cmd, void* data) {
         ((struct retro_log_callback*)data)->log = logPrintf;
         return true;
 
+    case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+        // Without this, pcsx_rearmed's own version-negotiation defaults
+        // to 0 (treating GET_CORE_OPTIONS_VERSION returning false the
+        // same as "no core-options API at all") and never calls
+        // SET_CORE_OPTIONS below, even for the plain v1 form -- s_coreOptions
+        // stayed permanently NULL, silently breaking every
+        // GET_VARIABLE lookup that isn't hardcoded like BIOS mode is
+        // (this is exactly why the memory card never got configured:
+        // pcsx_rearmed's own default_value for that option was never
+        // reachable, so it landed on "no config" and disabled it).
+        *(unsigned*)data = 1;
+        return true;
+
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
         // The v1 (non-_V2, non-_INTL) form -- an array of
         // retro_core_option_definition terminated by a NULL key. This is
