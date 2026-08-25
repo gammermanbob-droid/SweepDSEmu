@@ -13,6 +13,9 @@
 
 #include "common/file_util.h"
 #include "core/button_id_ds.h"
+#if defined(ANDROID)
+#include "common/android_utils.h"
+#endif
 
 // melonDS core headers
 #include "Args.h"
@@ -85,10 +88,32 @@ std::vector<uint8_t> ReadWholeFile(const fs::path& path) {
 // (see the follow_directory_symlink patch in cmake/melonds.cmake,
 // required for melonDS's own directory walk to actually descend
 // through these symlinks rather than treating them as empty leaves).
+// FileUtil::GetUserPath() returns real absolute paths on desktop, but
+// on Android it returns paths like "/sdmc/..." in a virtual convention
+// that only FileUtil::'s own functions know how to resolve internally
+// (AndroidUtils::TranslateFilePath, called from inside e.g.
+// FileUtil::CreateDir/Exists/IOFile) -- a raw std::filesystem call on
+// one of these paths, as BuildHomebrewSDCardRoot() below does
+// throughout, either fails outright (no real "/sdmc" exists at the
+// true filesystem root; only Android's own app sandbox can be written
+// to) or, worse, is a plain no-op that looks like it succeeded. This
+// is exactly why DS ROMs loaded from the game list needed the same
+// translation in ds_native.cpp -- same underlying gap, different call
+// site. Without it here, the homebrew SD card root this function
+// builds ends up empty, and homebrew that needs real DLDI/FAT access
+// (TWiLightMenu++'s BOOT.NDS, etc.) fails with "FAT init failed!".
+fs::path ToRealPath(fs::path virtualPath) {
+#if defined(ANDROID)
+    return fs::path(AndroidUtils::TranslateFilePath(virtualPath.string()));
+#else
+    return virtualPath;
+#endif
+}
+
 fs::path BuildHomebrewSDCardRoot() {
-    const fs::path sdmc(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir));
+    const fs::path sdmc = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)));
     const fs::path root =
-        fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard_root";
+        ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard_root");
     std::error_code ec;
     fs::create_directories(root, ec);
 
@@ -149,7 +174,7 @@ std::string MelonDSCore::SaveDirFor(const std::string& rom_path) const {
     // that tree so the two systems' save files can never shadow one
     // another, even if a 3DS and DS title happened to share a name.
     fs::path rom(rom_path);
-    fs::path dir = fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_saves";
+    fs::path dir = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_saves");
     std::error_code ec;
     fs::create_directories(dir, ec);
     return (dir / rom.stem()).string() + ".sav";
@@ -200,7 +225,7 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // NDSArgs already defaults ARM9BIOS/ARM7BIOS/Firmware to
     // FreeBIOS + generated firmware, so the fallback case needs no
     // extra code here — just leave `args` alone.
-    fs::path sysdata(FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir));
+    fs::path sysdata = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir)));
     fs::path bios9 = sysdata / "bios9.bin";
     fs::path bios7 = sysdata / "bios7.bin";
     fs::path firmware = sysdata / "firmware.bin";
@@ -275,7 +300,7 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
             std::move(dsi_bios7),
             std::move(dsi_nand),
             std::make_optional<melonDS::FATStorage>(melonDS::FATStorageArgs{
-                FileUtil::GetUserPath(FileUtil::UserPath::UserDir) + "dsi_sdcard.img",
+                ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "dsi_sdcard.img").string(),
                 0, // auto-size from the source directory's contents
                 false,
                 BuildHomebrewSDCardRoot().string(),
@@ -322,7 +347,7 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // BuildHomebrewSDCardRoot()), not the user's whole 3DS library.
     melonDS::NDSCart::NDSCartArgs cart_args{};
     cart_args.SDCard = melonDS::FATStorageArgs{
-        FileUtil::GetUserPath(FileUtil::UserPath::UserDir) + "nds_sdcard.img",
+        ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img").string(),
         0, // auto-size from the source directory's contents
         false,
         BuildHomebrewSDCardRoot().string(),
