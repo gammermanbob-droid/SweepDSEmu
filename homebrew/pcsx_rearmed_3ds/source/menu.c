@@ -144,6 +144,15 @@ static void scanGames(void) {
 char* menuBrowseForGame(void) {
     scanGames();
 
+    // Loops continuously (see audioPlayClip's looping arg) for as long
+    // as the player is on this screen -- including while menuSettings()
+    // below is open, since that's still "on the menu" from the
+    // player's perspective, not a separate context that should
+    // interrupt the music. Stopped on every way out of this function
+    // (a game gets picked, or the player quits the app) so it never
+    // bleeds into gameplay or keeps playing after the app closes.
+    audioPlayClip("romfs:/menu_music.pcm", 32000.0f, true);
+
     int selected = 0;
     while (aptMainLoop()) {
         inputPoll();
@@ -155,6 +164,7 @@ char* menuBrowseForGame(void) {
             selected = (selected + 1) % s_entryCount;
         }
         if (inputMenuBackPressed()) {
+            audioStopClip();
             return NULL; // quit the app
         }
         if (inputMenuSettingsPressed()) {
@@ -193,6 +203,7 @@ char* menuBrowseForGame(void) {
             }
         }
         if (confirmed) {
+            audioStopClip();
             return strdup(s_entries[selected].path);
         }
 
@@ -215,6 +226,7 @@ char* menuBrowseForGame(void) {
         videoDrawMenuText("A: Play   B: Quit App   X: Settings", 8, 220, 0.4f);
         videoEndFrame();
     }
+    audioStopClip(); // aptMainLoop() went false -- the whole app is closing
     return NULL;
 }
 

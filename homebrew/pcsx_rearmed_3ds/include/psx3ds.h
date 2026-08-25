@@ -57,6 +57,11 @@ void videoBeginFrame(bool gameplayActive);
 void videoPresentGameFrame(const PsxFrame* frame);
 void videoDrawMenuText(const char* text, float x, float y, float scale);
 void videoDrawAnalogToggle(bool enabled);
+// Boot screen animation, drawn on the top screen while main.c's boot
+// chime plays -- frame is just a monotonically increasing counter (one
+// full videoBeginFrame/videoEndFrame cycle apart, so effectively a
+// ~60fps clock) the caller keeps, not a wall-clock timestamp.
+void videoDrawBootLogo(int frame);
 void videoEndFrame(void);
 
 // Bottom-screen (320x240) position of the always-visible in-game
@@ -72,6 +77,19 @@ void videoEndFrame(void);
 bool audioInit(void);
 void audioExit(void);
 void audioSubmitSamples(const int16_t* interleavedStereo, size_t frames);
+// Restores the game-audio sample rate after a menu clip (see
+// audioPlayClip) may have left the shared channel at its own rate --
+// call once gameplay actually starts.
+void audioResetForGameplay(void);
+// Loads a whole romfs-embedded raw S16LE stereo PCM file and starts it
+// playing immediately, replacing whatever clip (if any) was already
+// playing. Returns false (and plays nothing) if the file can't be
+// opened/read/allocated.
+bool audioPlayClip(const char* romfsPath, float sampleRate, bool looping);
+void audioStopClip(void);
+// True once a non-looping clip has finished, or if nothing is playing;
+// always false for a looping clip (see audioPlayClip).
+bool audioClipFinished(void);
 
 // input.c
 void inputPoll(void);

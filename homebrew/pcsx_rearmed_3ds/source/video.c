@@ -259,6 +259,33 @@ void videoDrawAnalogToggle(bool enabled) {
     videoDrawMenuText("ANALOG", kAnalogToggleX - 26, kAnalogToggleY - kAnalogToggleRadius - 20, 0.42f);
 }
 
+// Reuses the same PS1 logo sprite as the in-game ANALOG toggle -- an
+// eased grow-in on the top screen, held at full size, while main.c's
+// boot chime plays. No real video decode (see the boot-chime design
+// discussion): this is deliberately just an animated logo synced to
+// the audio's own runtime, not a frame-accurate playback of the
+// source clip.
+void videoDrawBootLogo(int frame) {
+    C2D_TargetClear(s_top, C2D_Color32(0, 0, 0, 255));
+    C2D_SceneBegin(s_top);
+
+    float t = frame / 90.0f; // ~1.5s ramp at ~60fps
+    if (t > 1.0f) {
+        t = 1.0f;
+    }
+    float eased = 1.0f - (1.0f - t) * (1.0f - t); // ease-out
+    float logoSize = 90.0f + 110.0f * eased;       // grows 90px -> 200px, then holds
+
+    float scale = logoSize / s_analogLogo.subtex->width;
+    float x = (400.0f - logoSize) / 2.0f;
+    float y = (240.0f - logoSize) / 2.0f;
+    C2D_DrawImageAt(s_analogLogo, x, y, 0.5f, NULL, scale, scale);
+
+    C2D_TargetClear(s_bottom, C2D_Color32(20, 20, 30, 255));
+    C2D_SceneBegin(s_bottom);
+    videoDrawMenuText("Tap, A, or B to skip", 100, 210, 0.42f);
+}
+
 void videoEndFrame(void) {
     C3D_FrameEnd(0);
     C2D_TextBufClear(s_textBuf);

@@ -9,6 +9,8 @@
 // shape, just on 3DS's NDSP instead.
 
 #include <3ds.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "psx3ds.h"
@@ -25,6 +27,12 @@ static ndspWaveBuf s_waveBufs[NUM_BUFFERS];
 static int16_t* s_bufferData[NUM_BUFFERS];
 static int s_nextBuffer;
 static size_t s_writeOffsetFrames; // frames (L+R pairs) already filled in the current buffer
+
+// Boot chime / menu music playback -- a whole-file-at-once alternative
+// to the streaming path above, used only outside gameplay (see
+// audioPlayClip's own comment for why sharing AUDIO_CHANNEL is safe).
+static ndspWaveBuf s_clipWaveBuf;
+static int16_t* s_clipData;
 
 bool audioInit(void) {
     if (R_FAILED(ndspInit())) {
@@ -53,6 +61,7 @@ bool audioInit(void) {
 }
 
 void audioExit(void) {
+    audioStopClip();
     ndspChnWaveBufClear(AUDIO_CHANNEL);
     ndspExit();
     for (int i = 0; i < NUM_BUFFERS; ++i) {
@@ -61,6 +70,14 @@ void audioExit(void) {
             s_bufferData[i] = NULL;
         }
     }
+}
+
+void audioResetForGameplay(void) {
+    // A menu clip may have left the channel at its own sample rate
+    // (see audioPlayClip) -- PS1 audio is always 44100Hz, but reading
+    // it back from the core rather than hardcoding keeps this in sync
+    // with coreSampleRate() if that's ever wrong.
+    ndspChnSetRate(AUDIO_CHANNEL, (float)coreSampleRate());
 }
 
 static void flushCurrentBuffer(void) {
@@ -105,4 +122,63 @@ void audioSubmitSamples(const int16_t* interleavedStereo, size_t frames) {
             flushCurrentBuffer();
         }
     }
+}
+
+// Boot chime (main.c, once) and looping menu music (menu.c, while
+// browsing) both play on AUDIO_CHANNEL -- the same channel game audio
+// streams to, but never at the same time as a game: nothing calls
+// audioSubmitSamples() outside runGame()'s loop, and runGame() only
+// starts after menu.c's browser screen (where the music plays) has
+// already returned a ROM to load, so there's no real overlap to guard
+// against.
+bool audioPlayClip(const char* romfsPath, float sampleRate, bool looping) {
+    audioStopClip();
+
+    FILE* f = fopen(romfsPath, "rb");
+    if (!f) {
+        return false;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size <= 0) {
+        fclose(f);
+        return false;
+    }
+
+    s_clipData = (int16_t*)linearAlloc((size_t)size);
+    if (!s_clipData) {
+        fclose(f);
+        return false;
+    }
+    size_t read = fread(s_clipData, 1, (size_t)size, f);
+    fclose(f);
+    if (read != (size_t)size) {
+        linearFree(s_clipData);
+        s_clipData = NULL;
+        return false;
+    }
+
+    ndspChnSetRate(AUDIO_CHANNEL, sampleRate);
+
+    memset(&s_clipWaveBuf, 0, sizeof(s_clipWaveBuf));
+    s_clipWaveBuf.data_vaddr = s_clipData;
+    s_clipWaveBuf.nsamples = (u32)(size / (2 * sizeof(int16_t))); // stereo S16
+    s_clipWaveBuf.looping = looping;
+    DSP_FlushDataCache(s_clipData, (u32)size);
+    ndspChnWaveBufAdd(AUDIO_CHANNEL, &s_clipWaveBuf);
+    return true;
+}
+
+void audioStopClip(void) {
+    if (!s_clipData) {
+        return;
+    }
+    ndspChnWaveBufClear(AUDIO_CHANNEL);
+    linearFree(s_clipData);
+    s_clipData = NULL;
+}
+
+bool audioClipFinished(void) {
+    return !s_clipData || s_clipWaveBuf.status == NDSP_WBUF_DONE;
 }

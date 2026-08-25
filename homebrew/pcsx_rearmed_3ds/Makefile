@@ -116,7 +116,7 @@ endif
 
 .PHONY: all clean core
 
-all: core $(ROMFS)/ps1_logo.t3x $(BUILD) $(DEPSDIR)
+all: core $(ROMFS)/ps1_logo.t3x $(ROMFS)/boot_chime.pcm $(ROMFS)/menu_music.pcm $(BUILD) $(DEPSDIR)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 core: $(PCSX_CORE)
@@ -131,6 +131,19 @@ $(PCSX_CORE):
 $(ROMFS)/ps1_logo.t3x: gfx/ps1_logo.png
 	@mkdir -p $(ROMFS)
 	tex3ds -o $@ $<
+
+# Raw signed-16-bit PCM (see main.c's boot-chime playback and menu.c's
+# looping browser music) -- pre-decoded on the build machine via ffmpeg
+# (see audio_src/README) rather than embedding an MP3/AAC decoder in
+# the app itself, since NDSP wants raw PCM anyway and neither clip
+# needs re-encoding at runtime.
+$(ROMFS)/boot_chime.pcm: audio_src/boot_chime.pcm
+	@mkdir -p $(ROMFS)
+	cp $< $@
+
+$(ROMFS)/menu_music.pcm: audio_src/menu_music.pcm
+	@mkdir -p $(ROMFS)
+	cp $< $@
 
 $(BUILD):
 	@mkdir -p $@

@@ -29,10 +29,42 @@
 // comfortably above pcsx_rearmed's own 1MB floor.
 u32 __stacksize__ = 2 * 1024 * 1024;
 
+// Plays once on app launch, over an animated version of the PS1 logo
+// (see videoDrawBootLogo) -- the "ideal"/HLE BIOS this project falls
+// back to when no real BIOS dump is present skips the real console's
+// own startup chime entirely, so this stands in for it. Skippable via
+// any of the same inputs the file browser itself uses, so it never
+// gets in the way of someone who's already sat through it once.
+static void showBootScreen(void) {
+    if (!audioPlayClip("romfs:/boot_chime.pcm", 44100.0f, false)) {
+        return; // missing/corrupt clip -- just go straight to the browser
+    }
+    int frame = 0;
+    while (aptMainLoop()) {
+        inputPoll();
+        if (inputMenuConfirmPressed() || inputMenuBackPressed()) {
+            break;
+        }
+        int tx, ty;
+        if (inputTouchTapped(&tx, &ty)) {
+            break;
+        }
+        if (audioClipFinished()) {
+            break;
+        }
+        videoBeginFrame(false); // just for the C3D_FrameBegin -- videoDrawBootLogo does its own clears
+        videoDrawBootLogo(frame);
+        videoEndFrame();
+        ++frame;
+    }
+    audioStopClip();
+}
+
 static void runGame(const char* path) {
     if (!coreLoad(path)) {
         return;
     }
+    audioResetForGameplay(); // menu music (see menuBrowseForGame) may have left the channel at 32kHz
 
     // Starts false every session -- matches a real DualShock, which
     // resets to digital mode on power-on too; see coreLoad's own
@@ -89,6 +121,8 @@ int main(void) {
         videoExit();
         return 1;
     }
+
+    showBootScreen();
 
     while (aptMainLoop()) {
         char* gamePath = menuBrowseForGame();
