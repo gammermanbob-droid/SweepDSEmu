@@ -75,7 +75,7 @@ class InputOverlayDrawableButton(
         event: MotionEvent,
         pointerIndex: Int,
         hasActiveButtons: Boolean,
-        overlay: InputOverlay
+        overlay: InputOverlay?
     ): Boolean {
         val buttonSliding = EmulationMenuSettings.buttonSlide
         val xPosition = event.getX(pointerIndex).toInt()
@@ -133,20 +133,20 @@ class InputOverlayDrawableButton(
         return false
     }
 
-    private fun buttonDown(firstBtn: Boolean, pointerId: Int, overlay: InputOverlay) {
+    private fun buttonDown(firstBtn: Boolean, pointerId: Int, overlay: InputOverlay?) {
         pressedState = true
         isMotionFirstButton = firstBtn
         trackId = pointerId
-        overlay.hapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        overlay?.hapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
     }
 
-    private fun buttonUp(overlay: InputOverlay, preserveTrackId: Boolean) {
+    private fun buttonUp(overlay: InputOverlay?, preserveTrackId: Boolean) {
         pressedState = false
         isMotionFirstButton = false
         if (!preserveTrackId) {
             trackId = -1
         }
-        overlay.hapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY_RELEASE)
+        overlay?.hapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY_RELEASE)
     }
 
     fun onConfigureTouch(event: MotionEvent): Boolean {

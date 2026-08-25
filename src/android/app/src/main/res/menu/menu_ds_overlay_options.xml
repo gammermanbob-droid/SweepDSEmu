@@ -2,15 +2,26 @@
 <!-- Copyright Citra Emulator Project / Azahar Emulator Project
      Licensed under GPLv2 or any later version
      Refer to the license.txt file included. -->
-<!-- The DS side's overlay has no drag-to-reposition/per-button-scale
-     system (see buildButtonOverlay's doc comment on
-     DsEmulationActivity), so this is just the one option out of the
-     3DS side's menu_overlay_options.xml that still applies. -->
+<!-- The DS side's overlay has no per-button-scale system (that's a
+     3DS-only menu, see menu_overlay_options.xml's own adjust-scale
+     submenu), but does now support drag-to-reposition via
+     DsButtonOverlayView -- "Edit Layout" and "Reset Overlay" below
+     reuse the exact same string resources the 3DS side's own overlay
+     options menu uses for the equivalent entries. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
         android:id="@+id/menu_show_overlay"
         android:title="@string/emulation_show_controller_overlay"
         android:checkable="true" />
+
+    <item
+        android:id="@+id/menu_emulation_edit_layout"
+        android:title="@string/emulation_edit_layout"
+        android:checkable="true" />
+
+    <item
+        android:id="@+id/menu_emulation_reset_overlay"
+        android:title="@string/emulation_touch_overlay_reset" />
 
 </menu>

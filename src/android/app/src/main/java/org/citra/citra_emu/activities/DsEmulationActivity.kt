@@ -17,7 +17,6 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.res.ResourcesCompat
@@ -31,6 +30,7 @@ import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
 import org.citra.citra_emu.display.SecondaryDisplay
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
+import org.citra.citra_emu.overlay.DsButtonOverlayView
 import org.citra.citra_emu.overlay.DsDpadView
 
 /**
@@ -260,15 +260,16 @@ class DsEmulationActivity : AppCompatActivity() {
 
     // --- On-screen button overlay ---
     //
-    // Reuses the exact same button artwork InputOverlay draws for the 3DS
-    // side (R.drawable.button_a/_b/_x/_y/_l/_r/_start/_select/_home, each
-    // with a matching "_pressed" variant) instead of the plain text-label
-    // Buttons this used to be, so the DS player's overlay looks like the
-    // rest of the app rather than a placeholder. Left as a fixed layout
-    // (no drag-to-reposition/per-game config) rather than pulling in the
-    // rest of InputOverlay's machinery, which is built entirely around
-    // the 3DS's own button IDs and settings keys -- DS has few enough
-    // buttons that this is a reasonable place to stop short of that.
+    // The face/shoulder/start-select buttons are drawn by DsButtonOverlayView,
+    // a DS-specific rebuild of InputOverlay's own canvas-drawn button
+    // rendering (see that class's own doc comment for why a plain
+    // ImageButton, this code's previous approach, looked visibly
+    // different from the 3DS side's overlay despite using the same
+    // artwork) -- it also carries its own drag-to-reposition support,
+    // toggled via the drawer menu's "Configure Controls" entry (see
+    // showOverlayMenu/setUpInGameMenu), matching the 3DS side's own
+    // "Edit Layout" option.
+    private lateinit var dsButtonOverlayView: DsButtonOverlayView
 
     private fun buildButtonOverlay() {
         val overlay = binding.dsButtonOverlay
@@ -284,28 +285,9 @@ class DsEmulationActivity : AppCompatActivity() {
             }
         )
 
-        val faceSize = 64
-        val faceGap = 8
-        addOverlayButton(overlay, R.drawable.button_y, R.drawable.button_y_pressed, faceSize,
-            Gravity.TOP or Gravity.END, faceSize + faceGap, 0, NativeLibrary.DsButtonType.BUTTON_Y)
-        addOverlayButton(overlay, R.drawable.button_a, R.drawable.button_a_pressed, faceSize,
-            Gravity.TOP or Gravity.END, 2 * faceSize + 2 * faceGap, faceSize + faceGap,
-            NativeLibrary.DsButtonType.BUTTON_A)
-        addOverlayButton(overlay, R.drawable.button_b, R.drawable.button_b_pressed, faceSize,
-            Gravity.TOP or Gravity.END, 0, faceSize + faceGap, NativeLibrary.DsButtonType.BUTTON_B)
-        addOverlayButton(overlay, R.drawable.button_x, R.drawable.button_x_pressed, faceSize,
-            Gravity.TOP or Gravity.END, faceSize + faceGap, 2 * faceSize + 2 * faceGap,
-            NativeLibrary.DsButtonType.BUTTON_X)
-
-        addOverlayButton(overlay, R.drawable.button_l, R.drawable.button_l_pressed, 56,
-            Gravity.TOP or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_L)
-        addOverlayButton(overlay, R.drawable.button_r, R.drawable.button_r_pressed, 56,
-            Gravity.TOP or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_R)
-
-        addOverlayButton(overlay, R.drawable.button_select, R.drawable.button_select_pressed, 48,
-            Gravity.BOTTOM or Gravity.START, 16, 16, NativeLibrary.DsButtonType.BUTTON_SELECT)
-        addOverlayButton(overlay, R.drawable.button_start, R.drawable.button_start_pressed, 48,
-            Gravity.BOTTOM or Gravity.END, 16, 16, NativeLibrary.DsButtonType.BUTTON_START)
+        dsButtonOverlayView = DsButtonOverlayView(this)
+        overlay.addView(dsButtonOverlayView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
         // Opens the in-game drawer menu (see setUpInGameMenu) -- same role
         // as the Android back button on the 3DS side (EmulationFragment
@@ -336,45 +318,6 @@ class DsEmulationActivity : AppCompatActivity() {
                 bottomMargin = dpToPx(16)
             }
         )
-    }
-
-    private fun addOverlayButton(
-        parent: FrameLayout,
-        @DrawableRes normalRes: Int,
-        @DrawableRes pressedRes: Int,
-        sizeDp: Int,
-        gravity: Int,
-        marginX: Int,
-        marginY: Int,
-        dsButtonBit: Int
-    ) {
-        val button = ImageButton(this).apply {
-            setImageResource(normalRes)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            alpha = 0.85f
-            setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        setImageResource(pressedRes)
-                        NativeLibrary.dsOnButtonEvent(dsButtonBit, true)
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        setImageResource(normalRes)
-                        NativeLibrary.dsOnButtonEvent(dsButtonBit, false)
-                    }
-                }
-                true
-            }
-        }
-        val size = dpToPx(sizeDp)
-        val params = FrameLayout.LayoutParams(size, size).apply {
-            this.gravity = gravity
-            leftMargin = dpToPx(marginX)
-            topMargin = dpToPx(marginY)
-            rightMargin = dpToPx(marginX)
-            bottomMargin = dpToPx(marginY)
-        }
-        parent.addView(button, params)
     }
 
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
@@ -465,10 +408,26 @@ class DsEmulationActivity : AppCompatActivity() {
         val popupMenu = PopupMenu(this, binding.inGameMenu.findViewById(R.id.menu_overlay_options))
         popupMenu.menuInflater.inflate(R.menu.menu_ds_overlay_options, popupMenu.menu)
         popupMenu.menu.findItem(R.id.menu_show_overlay).isChecked = overlayVisible
+        popupMenu.menu.findItem(R.id.menu_emulation_edit_layout).isChecked =
+            dsButtonOverlayView.isInEditMode
         popupMenu.setOnMenuItemClickListener {
-            if (it.itemId == R.id.menu_show_overlay) {
-                overlayVisible = !overlayVisible
-                binding.dsButtonOverlay.visibility = if (overlayVisible) View.VISIBLE else View.GONE
+            when (it.itemId) {
+                R.id.menu_show_overlay -> {
+                    overlayVisible = !overlayVisible
+                    binding.dsButtonOverlay.visibility = if (overlayVisible) View.VISIBLE else View.GONE
+                }
+                R.id.menu_emulation_edit_layout -> {
+                    dsButtonOverlayView.isInEditMode = !dsButtonOverlayView.isInEditMode
+                    Toast.makeText(
+                        this,
+                        if (dsButtonOverlayView.isInEditMode)
+                            "Drag buttons to reposition them" else "Layout saved",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                R.id.menu_emulation_reset_overlay -> {
+                    dsButtonOverlayView.resetPositions()
+                }
             }
             true
         }
