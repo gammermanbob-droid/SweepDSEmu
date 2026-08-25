@@ -295,7 +295,21 @@ jobs:
       # same checkout/cache/deps this job already set up, so the native
       # side of this second Gradle invocation is mostly cache hits.
       - name: Build Thor
-        run: JAVA_HOME=$JAVA_HOME_17_X64 ./gradlew assembleThorRelease bundleThorRelease
+        # Retries on failure -- this hits the same AGP
+        # PackageAndroidArtifact$IncrementalSplitterRunnable flake
+        # .ci/android.sh's own assembleRelease/bundleRelease calls do
+        # (see that script's comment); a transient AGP-internal
+        # failure, not something a code change here can fix.
+        run: |
+          JAVA_HOME=$JAVA_HOME_17_X64
+          export JAVA_HOME
+          for attempt in 1 2 3; do
+            if ./gradlew assembleThorRelease bundleThorRelease; then
+              exit 0
+            fi
+            echo "Build Thor failed (attempt $attempt/3), retrying..." >&2
+          done
+          exit 1
         working-directory: src/android
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
