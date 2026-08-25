@@ -409,7 +409,7 @@ class DsEmulationActivity : AppCompatActivity() {
         popupMenu.menuInflater.inflate(R.menu.menu_ds_overlay_options, popupMenu.menu)
         popupMenu.menu.findItem(R.id.menu_show_overlay).isChecked = overlayVisible
         popupMenu.menu.findItem(R.id.menu_emulation_edit_layout).isChecked =
-            dsButtonOverlayView.isInEditMode
+            dsButtonOverlayView.repositionModeEnabled
         popupMenu.setOnMenuItemClickListener {
             when (it.itemId) {
                 R.id.menu_show_overlay -> {
@@ -417,10 +417,10 @@ class DsEmulationActivity : AppCompatActivity() {
                     binding.dsButtonOverlay.visibility = if (overlayVisible) View.VISIBLE else View.GONE
                 }
                 R.id.menu_emulation_edit_layout -> {
-                    dsButtonOverlayView.isInEditMode = !dsButtonOverlayView.isInEditMode
+                    dsButtonOverlayView.repositionModeEnabled = !dsButtonOverlayView.repositionModeEnabled
                     Toast.makeText(
                         this,
-                        if (dsButtonOverlayView.isInEditMode)
+                        if (dsButtonOverlayView.repositionModeEnabled)
                             "Drag buttons to reposition them" else "Layout saved",
                         Toast.LENGTH_SHORT
                     ).show()

@@ -86,7 +86,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
     private val buttons = mutableListOf<InputOverlayDrawableButton>()
     private var laidOut = false
 
-    var isInEditMode = false
+    var repositionModeEnabled = false
         set(value) {
             field = value
             invalidate()
@@ -146,7 +146,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (isInEditMode) {
+        if (repositionModeEnabled) {
             return onTouchWhileEditing(event)
         }
 
