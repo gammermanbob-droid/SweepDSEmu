@@ -13,10 +13,12 @@
 
 static bool s_forceHle;
 static bool s_displayOnBottom;
+static bool s_skipLines;
 
 void settingsLoad(void) {
     s_forceHle = false;
     s_displayOnBottom = false;
+    s_skipLines = true;
 
     FILE* f = fopen(SETTINGS_PATH, "r");
     if (!f) {
@@ -33,6 +35,8 @@ void settingsLoad(void) {
             s_forceHle = value != 0;
         } else if (strcmp(key, "display_on_bottom") == 0) {
             s_displayOnBottom = value != 0;
+        } else if (strcmp(key, "skip_lines") == 0) {
+            s_skipLines = value != 0;
         }
     }
     fclose(f);
@@ -47,6 +51,7 @@ static void save(void) {
     }
     fprintf(f, "force_hle=%d\n", s_forceHle ? 1 : 0);
     fprintf(f, "display_on_bottom=%d\n", s_displayOnBottom ? 1 : 0);
+    fprintf(f, "skip_lines=%d\n", s_skipLines ? 1 : 0);
     fclose(f);
 }
 
@@ -65,5 +70,14 @@ bool settingsGetDisplayOnBottom(void) {
 
 void settingsSetDisplayOnBottom(bool bottom) {
     s_displayOnBottom = bottom;
+    save();
+}
+
+bool settingsGetSkipLines(void) {
+    return s_skipLines;
+}
+
+void settingsSetSkipLines(bool skip) {
+    s_skipLines = skip;
     save();
 }

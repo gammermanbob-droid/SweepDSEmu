@@ -325,8 +325,8 @@ bool menuPause(void) {
 }
 
 void menuSettings(void) {
-    enum { ROW_BIOS, ROW_DISPLAY, ROW_COUNT };
-    const float kBiosRowY = 44.0f, kDisplayRowY = 84.0f;
+    enum { ROW_BIOS, ROW_DISPLAY, ROW_SKIPLINE, ROW_COUNT };
+    const float kBiosRowY = 44.0f, kDisplayRowY = 84.0f, kSkipLineRowY = 124.0f;
 
     int selected = ROW_BIOS;
 
@@ -349,13 +349,18 @@ void menuSettings(void) {
             } else if (ty >= kDisplayRowY && ty < kDisplayRowY + kRowHeight) {
                 selected = ROW_DISPLAY;
                 toggle = true;
+            } else if (ty >= kSkipLineRowY && ty < kSkipLineRowY + kRowHeight) {
+                selected = ROW_SKIPLINE;
+                toggle = true;
             }
         }
         if (toggle) {
             if (selected == ROW_BIOS) {
                 settingsSetForceHle(!settingsGetForceHle());
-            } else {
+            } else if (selected == ROW_DISPLAY) {
                 settingsSetDisplayOnBottom(!settingsGetDisplayOnBottom());
+            } else {
+                settingsSetSkipLines(!settingsGetSkipLines());
             }
         }
         if (inputMenuBackPressed()) {
@@ -373,9 +378,13 @@ void menuSettings(void) {
         videoDrawMenuText(settingsGetDisplayOnBottom() ? "   Bottom screen" : "   Top screen",
             8, kDisplayRowY, 0.42f);
 
-        videoDrawMenuText("A real BIOS dump goes in:", 8, 130, 0.38f);
-        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/ (e.g. scph1001.bin)", 8, 144, 0.34f);
-        videoDrawMenuText("Auto finds it there, falls back to HLE if missing.", 8, 156, 0.34f);
+        videoDrawMenuText(selected == ROW_SKIPLINE ? "> Performance mode:" : "  Performance mode:", 8, 108, 0.45f);
+        videoDrawMenuText(settingsGetSkipLines() ? "   Faster (skips every 2nd line)" :
+            "   Full quality", 8, kSkipLineRowY, 0.42f);
+
+        videoDrawMenuText("A real BIOS dump goes in:", 8, 160, 0.38f);
+        videoDrawMenuText("sdmc:/3ds/pcsx_rearmed_3ds/system/ (e.g. scph1001.bin)", 8, 172, 0.34f);
+        videoDrawMenuText("Auto finds it there, falls back to HLE if missing.", 8, 184, 0.34f);
 
         videoDrawMenuText("Tap a setting, or:", 8, 204, 0.38f);
         videoDrawMenuText("A/Up/Down: Select+Toggle   B: Back", 8, 220, 0.4f);

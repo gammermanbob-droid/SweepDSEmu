@@ -25,3 +25,12 @@ void settingsSetForceHle(bool force);
 // bigger/centered screen free for something else or just prefer it.
 bool settingsGetDisplayOnBottom(void);
 void settingsSetDisplayOnBottom(bool bottom);
+
+// true (default): skip every 2nd scanline in the GPU_UNAI software
+// renderer, roughly halving pixel-fill cost -- a real, meaningful
+// performance win at the cost of a visibly lower-res/"interlaced"
+// look. Exposed as a live toggle specifically so it can be turned back
+// off from the settings screen without a new build if the tradeoff
+// doesn't feel worth it.
+bool settingsGetSkipLines(void);
+void settingsSetSkipLines(bool skip);

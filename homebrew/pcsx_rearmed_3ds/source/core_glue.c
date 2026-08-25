@@ -201,6 +201,16 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "auto";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_gpu_unai_skipline") == 0) {
+            // Live toggle (see settings.h) rather than a fixed value --
+            // this halves the software renderer's pixel-fill cost, a
+            // real perf win, but visibly lowers output quality (skips
+            // every 2nd scanline), so it needs to be switchable from
+            // the settings screen without a new build if the tradeoff
+            // isn't worth it for a given game/player.
+            var->value = settingsGetSkipLines() ? "enabled" : "disabled";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
