@@ -286,6 +286,24 @@ void videoDrawBootLogo(int frame) {
     videoDrawMenuText("Tap, A, or B to skip", 100, 210, 0.42f);
 }
 
+// The real-video intro (see intro_video.c) feeds decoded pictures in
+// through the exact same videoPresentGameFrame()/drawGameImage() path
+// a PS1 game's own frame does (MVD's RGB565 output lines up with the
+// existing case-2 passthrough in videoPresentGameFrame with zero new
+// texture/blit code needed) -- this just sets up the top-screen scene
+// for that, always on top regardless of settingsGetDisplayOnBottom()
+// (see this function's own header comment for why that setting
+// doesn't apply here).
+void videoBeginIntroFrame(void) {
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    C2D_TargetClear(s_top, C2D_Color32(0, 0, 0, 255));
+    C2D_SceneBegin(s_top);
+    drawGameImage(400.0f);
+
+    C2D_TargetClear(s_bottom, C2D_Color32(20, 20, 30, 255));
+    C2D_SceneBegin(s_bottom);
+}
+
 void videoEndFrame(void) {
     C3D_FrameEnd(0);
     C2D_TextBufClear(s_textBuf);

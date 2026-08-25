@@ -116,7 +116,7 @@ endif
 
 .PHONY: all clean core
 
-all: core $(ROMFS)/ps1_logo.t3x $(ROMFS)/boot_chime.pcm $(ROMFS)/menu_music.pcm $(BUILD) $(DEPSDIR)
+all: core $(ROMFS)/ps1_logo.t3x $(ROMFS)/boot_chime.pcm $(ROMFS)/menu_music.pcm $(ROMFS)/intro_video.h264 $(BUILD) $(DEPSDIR)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 core: $(PCSX_CORE)
@@ -142,6 +142,14 @@ $(ROMFS)/boot_chime.pcm: audio_src/boot_chime.pcm
 	cp $< $@
 
 $(ROMFS)/menu_music.pcm: audio_src/menu_music.pcm
+	@mkdir -p $(ROMFS)
+	cp $< $@
+
+# New3DS-only hardware-decoded boot intro (see intro_video.c) -- a raw
+# Annex-B H.264 elementary stream, pre-encoded via ffmpeg (see
+# audio_src/README.md) at a resolution/bitrate the MVD hardware decoder
+# can keep up with in real time.
+$(ROMFS)/intro_video.h264: audio_src/intro_video.h264
 	@mkdir -p $(ROMFS)
 	cp $< $@
 

@@ -26,6 +26,7 @@ bool g_psxPad[PSX_MAX_BUTTONS];
 
 static enum retro_pixel_format s_pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
 static const struct retro_core_option_definition* s_coreOptions;
+static retro_audio_buffer_status_callback_t s_audioBufferStatusCb;
 static double s_targetFps = 60.0;
 static double s_sampleRate = 44100.0;
 static char s_currentGameName[128];
@@ -181,6 +182,19 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "enabled";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_frameskip_type") == 0) {
+            // Defaults to "disabled" -- fine on real hardware or a
+            // beefy retro frontend, but on a 3DS's own ARM11 core
+            // still-reported stutter is far more likely a frame
+            // occasionally missing its budget than anything actually
+            // wrong with the emulation itself. "auto" skips a video
+            // frame instead of letting the audio ring buffer run dry
+            // when that happens (pcsx_rearmed's own frontend-advised
+            // skip, not a fixed interval), trading an occasional
+            // dropped frame for not being able to hear the difference.
+            var->value = "auto";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
@@ -190,6 +204,21 @@ static bool environCallback(unsigned cmd, void* data) {
 
     case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
         return true;
+
+    case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
+        // Required for the "auto" pcsx_rearmed_frameskip_type forced
+        // above to do anything at all -- pcsx_rearmed's own frameskip
+        // logic only ever sees retro_audio_buff_active as true if this
+        // callback was successfully registered (frontend.libretro.c's
+        // update_variables()), and skip_frame is gated on that flag.
+        // coreRunFrame() below calls it once per emulated frame, right
+        // before retro_run(), matching this environment call's own doc
+        // comment for when a frontend should invoke it.
+        const struct retro_audio_buffer_status_callback* cb =
+            (const struct retro_audio_buffer_status_callback*)data;
+        s_audioBufferStatusCb = cb ? cb->callback : NULL;
+        return true;
+    }
 
     default:
         return false;
@@ -317,6 +346,15 @@ void coreUnload(void) {
 }
 
 void coreRunFrame(void) {
+    if (s_audioBufferStatusCb) {
+        unsigned occupancy = audioBufferOccupancyPercent();
+        // "Likely underrun" is meant to be a predictive judgment from
+        // actual playback-rate history, which we don't track -- "the
+        // buffer is nearly empty right now" is a coarser proxy, but
+        // it's exactly the state an underrun is about to happen from,
+        // so it's a reasonable stand-in given what audio.c exposes.
+        s_audioBufferStatusCb(true, occupancy, occupancy < 25);
+    }
     retro_run();
     // Only pending for the retro_run() call it was set before -- pad.c's
     // own toggle-on-edge detection (in_dualshock_toggling) only needs

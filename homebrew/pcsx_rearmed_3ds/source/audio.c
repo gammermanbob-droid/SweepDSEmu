@@ -182,3 +182,13 @@ void audioStopClip(void) {
 bool audioClipFinished(void) {
     return !s_clipData || s_clipWaveBuf.status == NDSP_WBUF_DONE;
 }
+
+unsigned audioBufferOccupancyPercent(void) {
+    int queued = 0;
+    for (int i = 0; i < NUM_BUFFERS; ++i) {
+        if (s_waveBufs[i].status != NDSP_WBUF_DONE) {
+            ++queued;
+        }
+    }
+    return (unsigned)(queued * 100 / NUM_BUFFERS);
+}

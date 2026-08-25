@@ -62,6 +62,14 @@ void videoDrawAnalogToggle(bool enabled);
 // full videoBeginFrame/videoEndFrame cycle apart, so effectively a
 // ~60fps clock) the caller keeps, not a wall-clock timestamp.
 void videoDrawBootLogo(int frame);
+// Starts a frame that fills the top screen with whatever the most
+// recent videoPresentGameFrame() call uploaded (see intro_video.c) and
+// clears the bottom screen for a skip-hint text draw -- used only by
+// the real-video boot intro, unlike videoBeginFrame(gameplayActive)
+// which the PS1 game view + browser/pause/settings screens use and
+// which additionally respects settingsGetDisplayOnBottom(); the intro
+// always belongs on top regardless of that setting.
+void videoBeginIntroFrame(void);
 void videoEndFrame(void);
 
 // Bottom-screen (320x240) position of the always-visible in-game
@@ -90,6 +98,14 @@ void audioStopClip(void);
 // True once a non-looping clip has finished, or if nothing is playing;
 // always false for a looping clip (see audioPlayClip).
 bool audioClipFinished(void);
+// 0-100: how many of the game-audio ring's hardware buffers are still
+// queued for playback, as a rough proxy for buffered latency. Feeds
+// core_glue.c's RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK
+// implementation, which is what makes pcsx_rearmed's own "auto"
+// frameskip option (see core_glue.c's GET_VARIABLE override) actually
+// do anything -- without real occupancy data from the frontend, that
+// option silently never skips a single frame.
+unsigned audioBufferOccupancyPercent(void);
 
 // input.c
 void inputPoll(void);
@@ -130,3 +146,28 @@ void coreSaveStatePath(char* buf, size_t bufSize);
 // pad type -- see coreLoad's own comment for why that caused a
 // noticeable delay instead.
 void coreTriggerAnalogToggle(void);
+
+// intro_video.c -- hardware H.264 decode of the boot intro via the
+// New3DS's own MVD service (see 3ds/services/mvd.h). Old 3DS has no
+// such hardware and can't decode this in real time in software, so
+// every function here is a New3DS-only affordance: introVideoInit()
+// itself checks APT_CheckNew3DS() and returns false immediately on an
+// Old 3DS, same as it does for any other setup failure (missing romfs
+// file, MVDSTD refusing to start, etc.) -- callers always have exactly
+// one fallback path to take on false, not several failure kinds to
+// distinguish.
+//
+// Starts romfs:/boot_chime.pcm playing (see audioPlayClip) the moment
+// decode setup actually succeeds, since that's the point video and
+// audio should both start from.
+bool introVideoInit(void);
+// Decodes and, once ready, presents (via videoPresentGameFrame) the
+// next source frame -- call once per vsync tick from the caller's own
+// videoBeginIntroFrame/videoEndFrame loop; internally paces itself to
+// the source's own frame rate rather than presenting a new picture
+// every tick.
+void introVideoStep(void);
+// True once playback has reached the end of the stream, or a decode
+// call failed outright -- caller should stop the loop either way.
+bool introVideoDone(void);
+void introVideoExit(void);

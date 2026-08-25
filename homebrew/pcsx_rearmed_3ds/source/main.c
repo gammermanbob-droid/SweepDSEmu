@@ -29,13 +29,35 @@
 // comfortably above pcsx_rearmed's own 1MB floor.
 u32 __stacksize__ = 2 * 1024 * 1024;
 
-// Plays once on app launch, over an animated version of the PS1 logo
-// (see videoDrawBootLogo) -- the "ideal"/HLE BIOS this project falls
-// back to when no real BIOS dump is present skips the real console's
-// own startup chime entirely, so this stands in for it. Skippable via
-// any of the same inputs the file browser itself uses, so it never
+// Plays once on app launch, since the "ideal"/HLE BIOS this project
+// falls back to when no real BIOS dump is present skips the real
+// console's own startup intro entirely. On a New3DS this is the actual
+// source video, hardware-decoded via intro_video.c; everywhere else
+// (Old 3DS, or if the New3DS decoder fails to start for any reason)
+// it's the audio + animated-logo fallback. Skippable via any of the
+// same inputs the file browser itself uses either way, so it never
 // gets in the way of someone who's already sat through it once.
 static void showBootScreen(void) {
+    if (introVideoInit()) {
+        while (aptMainLoop() && !introVideoDone()) {
+            inputPoll();
+            if (inputMenuConfirmPressed() || inputMenuBackPressed()) {
+                break;
+            }
+            int tx, ty;
+            if (inputTouchTapped(&tx, &ty)) {
+                break;
+            }
+            introVideoStep();
+            videoBeginIntroFrame();
+            videoDrawMenuText("Tap, A, or B to skip", 100, 210, 0.42f);
+            videoEndFrame();
+        }
+        introVideoExit();
+        audioStopClip();
+        return;
+    }
+
     if (!audioPlayClip("romfs:/boot_chime.pcm", 44100.0f, false)) {
         return; // missing/corrupt clip -- just go straight to the browser
     }
