@@ -11,6 +11,17 @@ Usage:
 
 Requires the same tools as make_ds_forwarder.py (bannertool, makerom) --
 see that script's docstring for what each does.
+
+IMPORTANT: the --rsf-template file (shared with make_ds_forwarder.py,
+lives outside this repo) must declare "mvd:STD" under
+AccessControlInfo/ServiceAccessControl and "mvd: 0x0004013020004102"
+under SystemControlInfo/Dependency for intro_video.c's New3DS hardware
+video decode to work -- without it, mvdstdInit() hung the app outright
+on real hardware instead of failing cleanly (see Core-2-Extreme's
+Video_player_for_3DS project, which needs the exact same two entries).
+Since that template lives outside version control, a fresh machine
+needs this added by hand; there's nothing this script itself can check
+or fix at packaging time.
 """
 
 import argparse
