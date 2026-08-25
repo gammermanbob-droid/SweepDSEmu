@@ -22,7 +22,7 @@ extern bool g_psxPad[PSX_MAX_BUTTONS];
 // Left stick X/Y, right stick X/Y -- indices match libretro.h's
 // RETRO_DEVICE_INDEX_ANALOG_LEFT/RIGHT * 2 + RETRO_DEVICE_ID_ANALOG_X/Y,
 // full int16 range (matches retro_input_state_t's own return range).
-// Only meaningful once analog mode is on (see coreSetAnalogMode) --
+// Only meaningful once analog mode is on (see coreTriggerAnalogToggle) --
 // pcsx_rearmed ignores these entirely in plain digital-pad mode.
 #define PSX_ANALOG_LEFT_X 0
 #define PSX_ANALOG_LEFT_Y 1
@@ -104,8 +104,11 @@ double coreTargetFps(void);
 double coreSampleRate(void);
 const char* coreCurrentGameName(void);
 void coreSaveStatePath(char* buf, size_t bufSize);
-// Switches the emulated pad between a plain digital pad and a
-// DualShock (analog sticks + PSX's own in-game "analog mode" toggle) --
-// safe to call at any time, including mid-game, matching how a real
-// DualShock's physical ANALOG button works.
-void coreSetAnalogMode(bool enabled);
+// Flips analog mode by simulating the L3+R3 combo pcsx_rearmed's own
+// analog_combo option is forced to watch for, held for exactly one
+// input poll -- an instant, in-engine flag flip (see padToggleAnalog
+// in libpcsxcore/pad.c), matching how a real DualShock's own ANALOG
+// button works. Deliberately *not* implemented by reconfiguring the
+// pad type -- see coreLoad's own comment for why that caused a
+// noticeable delay instead.
+void coreTriggerAnalogToggle(void);

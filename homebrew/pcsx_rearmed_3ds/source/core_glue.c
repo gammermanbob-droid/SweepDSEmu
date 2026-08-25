@@ -152,6 +152,17 @@ static bool environCallback(unsigned cmd, void* data) {
             var->value = "shared";
             return true;
         }
+        if (strcmp(var->key, "pcsx_rearmed_analog_combo") == 0) {
+            // Which button combo pcsx_rearmed's own update_input()
+            // watches for to flip analog mode (see padToggleAnalog in
+            // libpcsxcore/pad.c) -- L3+R3 specifically because nothing
+            // on our overlay maps to either normally (see input.c),
+            // so coreTriggerAnalogToggle() can inject just these two
+            // for one frame without ever colliding with a real button
+            // press.
+            var->value = "l3+r3";
+            return true;
+        }
         return findCoreOptionDefault(var->key, &var->value);
     }
 
@@ -196,11 +207,20 @@ static void inputPollCallback(void) {
     // press between the two scans.
 }
 
+// Set for exactly one retro_run()'s worth of polling by
+// coreTriggerAnalogToggle() -- see its own comment for why this,
+// rather than reconfiguring the pad type, is how the ANALOG button
+// actually flips analog mode.
+static bool s_analogComboPending;
+
 static int16_t inputStateCallback(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0) {
         return 0;
     }
     if (device == RETRO_DEVICE_JOYPAD) {
+        if (s_analogComboPending && (id == RETRO_DEVICE_ID_JOYPAD_L3 || id == RETRO_DEVICE_ID_JOYPAD_R3)) {
+            return 1;
+        }
         return (id < PSX_MAX_BUTTONS && g_psxPad[id]) ? 1 : 0;
     }
     if (device == RETRO_DEVICE_ANALOG) {
@@ -253,12 +273,24 @@ bool coreLoad(const char* path) {
     s_targetFps = avInfo.timing.fps > 0 ? avInfo.timing.fps : 60.0;
     s_sampleRate = avInfo.timing.sample_rate > 0 ? avInfo.timing.sample_rate : 44100.0;
 
-    coreSetAnalogMode(settingsGetAnalogMode());
+    // Declared once, unconditionally, and never switched again --
+    // matches how a player would actually use a real DualShock (always
+    // plugged in as a DualShock; digital vs analog is the pad's own
+    // internal mode, not a different pad). Reconfiguring the pad
+    // *type* every time the ANALOG button was tapped -- this file's
+    // previous approach -- is what caused the reported delay: it makes
+    // pcsx_rearmed re-run its own pad-change/reset logic
+    // (retro_set_controller_port_device -> padChanged() -> padReset()
+    // in libpcsxcore/pad.c), which real analog-mode toggling never
+    // does; padToggleAnalog() is a plain instant flag flip. Real
+    // toggling now happens via coreTriggerAnalogToggle() instead,
+    // simulating the L3+R3 combo pcsx_rearmed's own analog_combo core
+    // option (forced to "l3+r3" below) already watches for -- the
+    // same mechanism a real DualShock's own ANALOG button uses,
+    // nothing to reconfigure. Starts in digital mode every session,
+    // same as a real DualShock does on power-on.
+    retro_set_controller_port_device(0, RETRO_DEVICE_PSE_DUALSHOCK);
     return true;
-}
-
-void coreSetAnalogMode(bool enabled) {
-    retro_set_controller_port_device(0, enabled ? RETRO_DEVICE_PSE_DUALSHOCK : RETRO_DEVICE_JOYPAD);
 }
 
 void coreUnload(void) {
@@ -268,6 +300,14 @@ void coreUnload(void) {
 
 void coreRunFrame(void) {
     retro_run();
+    // Only pending for the retro_run() call it was set before -- pad.c's
+    // own toggle-on-edge detection (in_dualshock_toggling) only needs
+    // the combo held for a single input poll to register one flip.
+    s_analogComboPending = false;
+}
+
+void coreTriggerAnalogToggle(void) {
+    s_analogComboPending = true;
 }
 
 double coreTargetFps(void) {

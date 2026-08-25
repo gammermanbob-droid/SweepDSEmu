@@ -34,7 +34,13 @@ static void runGame(const char* path) {
         return;
     }
 
-    bool analogEnabled = settingsGetAnalogMode();
+    // Starts false every session -- matches a real DualShock, which
+    // resets to digital mode on power-on too; see coreLoad's own
+    // comment for why the engine's internal analog state can't be
+    // restored from a previous session anyway (only ever flipped via
+    // the same one-frame combo injection a real ANALOG button press
+    // triggers, nothing to read back from).
+    bool analogEnabled = false;
     osSetSpeedupEnable(true); // New 3DS CPU clock boost while actually playing
     bool quit = false;
     while (!quit && aptMainLoop()) {
@@ -54,8 +60,7 @@ static void runGame(const char* path) {
             float dx = tx - kAnalogToggleX, dy = ty - kAnalogToggleY;
             if (sqrtf(dx * dx + dy * dy) <= kAnalogToggleRadius) {
                 analogEnabled = !analogEnabled;
-                settingsSetAnalogMode(analogEnabled);
-                coreSetAnalogMode(analogEnabled);
+                coreTriggerAnalogToggle();
             }
         }
 

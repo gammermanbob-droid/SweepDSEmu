@@ -13,12 +13,10 @@
 
 static bool s_forceHle;
 static bool s_displayOnBottom;
-static bool s_analogMode;
 
 void settingsLoad(void) {
     s_forceHle = false;
     s_displayOnBottom = false;
-    s_analogMode = false;
 
     FILE* f = fopen(SETTINGS_PATH, "r");
     if (!f) {
@@ -35,8 +33,6 @@ void settingsLoad(void) {
             s_forceHle = value != 0;
         } else if (strcmp(key, "display_on_bottom") == 0) {
             s_displayOnBottom = value != 0;
-        } else if (strcmp(key, "analog_mode") == 0) {
-            s_analogMode = value != 0;
         }
     }
     fclose(f);
@@ -51,7 +47,6 @@ static void save(void) {
     }
     fprintf(f, "force_hle=%d\n", s_forceHle ? 1 : 0);
     fprintf(f, "display_on_bottom=%d\n", s_displayOnBottom ? 1 : 0);
-    fprintf(f, "analog_mode=%d\n", s_analogMode ? 1 : 0);
     fclose(f);
 }
 
@@ -70,14 +65,5 @@ bool settingsGetDisplayOnBottom(void) {
 
 void settingsSetDisplayOnBottom(bool bottom) {
     s_displayOnBottom = bottom;
-    save();
-}
-
-bool settingsGetAnalogMode(void) {
-    return s_analogMode;
-}
-
-void settingsSetAnalogMode(bool enabled) {
-    s_analogMode = enabled;
     save();
 }

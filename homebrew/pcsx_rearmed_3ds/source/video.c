@@ -225,33 +225,32 @@ void videoDrawMenuText(const char* text, float x, float y, float scale) {
 void videoDrawAnalogToggle(bool enabled) {
     C2D_SceneBegin(s_bottom); // in case drawGameImage() above left the top screen selected
 
+    // Switched from concentric circles to concentric squares: circles
+    // use a separate internal citro2d draw mode from images ("Switching
+    // to and from circle mode internally requires an expensive state
+    // change", per C2D_DrawCircle's own doc comment), and even with an
+    // explicit C2D_Flush() between the two, the ring never actually
+    // showed up on real hardware -- only the logo did. Squares use the
+    // exact same draw path as C2D_DrawImageAt (both are plain textured/
+    // colored quads), so there's no mode switch involved at all here.
+    //
     // The PlayStation logo itself is a large, solid, multi-colored
-    // graphic (not a small transparent-background icon) -- drawing it
-    // at nearly the full circle's size left almost no state color
-    // showing, so the red/gray distinction is a dedicated OUTER RING
-    // here instead of a fill color the logo would mostly cover: white
-    // outline, then a *thick* state-color ring (still reportedly too
-    // hard to see at the previous size/thickness -- bigger badge,
-    // bigger ring, smaller inner disc this time), then a fixed dark
-    // disc behind the logo so it reads the same regardless of state.
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.2f, kAnalogToggleRadius + 10,
-        C2D_Color32(255, 255, 255, 255));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.3f, kAnalogToggleRadius + 6,
+    // graphic (not a small transparent-background icon), so the red/
+    // gray state distinction is a dedicated border around it rather
+    // than a fill color the logo would mostly cover: white outline,
+    // then a thick state-color square, then a fixed dark square behind
+    // the logo so it reads the same regardless of state.
+    const float half = kAnalogToggleRadius;
+    C2D_DrawRectSolid(kAnalogToggleX - half - 10, kAnalogToggleY - half - 10,
+        0.2f, (half + 10) * 2, (half + 10) * 2, C2D_Color32(255, 255, 255, 255));
+    C2D_DrawRectSolid(kAnalogToggleX - half - 6, kAnalogToggleY - half - 6,
+        0.3f, (half + 6) * 2, (half + 6) * 2,
         enabled ? C2D_Color32(200, 20, 20, 255) : C2D_Color32(80, 80, 90, 200));
-    C2D_DrawCircleSolid(kAnalogToggleX, kAnalogToggleY, 0.4f, kAnalogToggleRadius - 10,
-        C2D_Color32(20, 20, 25, 255));
+    C2D_DrawRectSolid(kAnalogToggleX - half + 10, kAnalogToggleY - half + 10,
+        0.4f, (half - 10) * 2, (half - 10) * 2, C2D_Color32(20, 20, 25, 255));
 
-    // The circle draws above and the image draw below use different
-    // internal citro2d draw modes ("Switching to and from circle mode
-    // internally requires an expensive state change", per C2D_DrawCircle's
-    // own doc comment) -- explicitly flushing the batch here instead of
-    // relying on the image draw's own mode switch to do it guarantees
-    // the circles actually get submitted before anything else touches
-    // the same target this frame.
-    C2D_Flush();
-
-    // PlayStation logo badge, centered inside the dark disc -- small
-    // enough that the ring around it stays clearly visible.
+    // PlayStation logo badge, centered inside the dark square -- small
+    // enough that the border around it stays clearly visible.
     const float logoSize = (kAnalogToggleRadius - 10) * 1.3f;
     float scale = logoSize / s_analogLogo.subtex->width;
     C2D_DrawImageAt(s_analogLogo, kAnalogToggleX - logoSize / 2.0f, kAnalogToggleY - logoSize / 2.0f,
