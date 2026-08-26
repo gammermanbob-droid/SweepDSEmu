@@ -227,11 +227,26 @@ fs::path BuildHomebrewSDCardRoot() {
     std::error_code ec;
     fs::create_directories(root, ec);
 
-    for (const char* name : {"_nds", "roms"}) {
-        const fs::path target = sdmc / name;
+    {
+        const fs::path target = sdmc / "_nds";
+        if (fs::is_directory(target, ec)) {
+            LinkOrCopyDirectory(target, root / "_nds");
+        }
+    }
+
+    // Only sync the DS/DSi/GBA subfolders nds-bootstrap and GBARunner2
+    // actually read from. roms/ commonly also holds entirely unrelated
+    // platforms alongside them (e.g. roms/psx, for a separate PS1
+    // core) -- syncing those too just wastes space and time in this
+    // DS-only virtual SD card, and can push its content past the FAT
+    // image's capacity, silently dropping unrelated files (see
+    // EnsureSDCardImageFitsContent).
+    fs::create_directories(root / "roms", ec);
+    for (const char* platform : {"nds", "dsi", "gba"}) {
+        const fs::path target = sdmc / "roms" / platform;
         if (!fs::is_directory(target, ec))
             continue;
-        LinkOrCopyDirectory(target, root / name);
+        LinkOrCopyDirectory(target, root / "roms" / platform);
     }
 
     // MoonShell2 specifically insists its own "moonshl2" resource
@@ -251,6 +266,54 @@ fs::path BuildHomebrewSDCardRoot() {
     }
 
     return root;
+}
+
+// melonDS's FATStorage only computes an image's size ONCE, at first
+// creation (from the source directory's contents at that moment, plus
+// 128MB leeway) -- every later Load() just reuses whatever size the
+// existing .img/.idx pair already has, regardless of how much the
+// source directory has grown since. Once the real content outgrows
+// the frozen image size, ImportDirectory silently fails to sync
+// whichever files don't fit, in whatever order its internal directory
+// walk happens to hit them -- which can mean a user's selected game,
+// or nds-bootstrap itself, is simply missing from the virtual SD card
+// with no visible warning. Delete a stale image so FATStorage recreates
+// it at a size that actually fits the current content.
+void EnsureSDCardImageFitsContent(const fs::path& imgPath, const fs::path& sourceDir) {
+    std::error_code ec;
+    if (!fs::exists(imgPath, ec)) {
+        return; // no existing image yet; FATStorage will size it correctly on first creation
+    }
+    const auto imgSize = fs::file_size(imgPath, ec);
+    if (ec) {
+        return;
+    }
+
+    std::uintmax_t contentSize = 0;
+    for (auto it = fs::recursive_directory_iterator(
+             sourceDir, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!it->is_directory(ec)) {
+            contentSize += it->file_size(ec);
+            ec.clear();
+        }
+    }
+
+    // Match FATStorage's own 128MB leeway so a rebuild isn't triggered
+    // by the same margin it would already account for on first creation.
+    constexpr std::uintmax_t kLeeway = 0x8000000ULL;
+    if (contentSize + kLeeway > imgSize) {
+        LOG_WARNING(Core,
+                    "SD card image {} ({} bytes) is too small for its current source content "
+                    "({} bytes) -- deleting so it gets rebuilt at the correct size",
+                    imgPath.string(), imgSize, contentSize);
+        fs::remove(imgPath, ec);
+        fs::remove(fs::path(imgPath.string() + ".idx"), ec);
+    }
 }
 
 template <size_t N>
@@ -409,13 +472,16 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     }
 
     if (dsi_nand.has_value()) {
+        const fs::path dsi_sdcard_img =
+            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "dsi_sdcard.img");
+        EnsureSDCardImageFitsContent(dsi_sdcard_img, fs::path(get_homebrew_sdcard_root()));
         melonDS::DSiArgs dsi_args{
             std::move(args),
             std::move(dsi_bios9),
             std::move(dsi_bios7),
             std::move(dsi_nand),
             std::make_optional<melonDS::FATStorage>(melonDS::FATStorageArgs{
-                ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "dsi_sdcard.img").string(),
+                dsi_sdcard_img.string(),
                 0, // auto-size from the source directory's contents
                 false,
                 get_homebrew_sdcard_root(),
@@ -474,8 +540,11 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
         rom_is_homebrew = header.IsHomebrew();
     }
     if (rom_is_homebrew) {
+        const fs::path nds_sdcard_img =
+            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img");
+        EnsureSDCardImageFitsContent(nds_sdcard_img, fs::path(get_homebrew_sdcard_root()));
         cart_args.SDCard = melonDS::FATStorageArgs{
-            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img").string(),
+            nds_sdcard_img.string(),
             0, // auto-size from the source directory's contents
             false,
             get_homebrew_sdcard_root(),
