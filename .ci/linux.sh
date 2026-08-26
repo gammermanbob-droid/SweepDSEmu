@@ -31,7 +31,13 @@ cmake .. -G Ninja \
     -DUSE_DISCORD_PRESENCE=ON \
     "${EXTRA_CMAKE_FLAGS[@]}"
 ninja
-strip -s bin/Release/*
+# -maxdepth 1 -type f rather than a bare "bin/Release/*" glob: strip
+# can't process a directory argument (exits nonzero, aborting this
+# script under set -e) and bin/Release/ isn't guaranteed to contain
+# only binaries -- ndsbrewer_meta's CMakeLists.txt copies its
+# ds_forwarder_tools/ helper directory in next to the built
+# executables there.
+find bin/Release -maxdepth 1 -type f -exec strip -s {} +
 
 if [[ "$TARGET" == "appimage"* ]]; then
     ninja bundle
