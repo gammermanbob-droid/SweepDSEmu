@@ -80,5 +80,8 @@ GPU: OpenGL ES 3.2 or Vulkan 1.1 support
 Memory: 2GB of RAM. 4GB is recommended
 ```
 
+# Credits
+- The Android app's menu music is ["Nintendo DS music be like"](https://www.youtube.com/@PatoBoiProductions) by PatoBoiProductions, used with permission.
+
 # Where to find this project
 - GitHub: https://github.com/gammermanbob-droid/SweepDSEmu
