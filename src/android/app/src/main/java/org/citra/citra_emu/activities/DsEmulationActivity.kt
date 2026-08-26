@@ -30,10 +30,12 @@ import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
 import org.citra.citra_emu.display.SecondaryDisplay
 import org.citra.citra_emu.features.settings.model.Settings
+import org.citra.citra_emu.features.settings.model.view.InputBindingSetting
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.overlay.DsButtonOverlayView
 import org.citra.citra_emu.overlay.DsDpadView
+import org.citra.citra_emu.utils.ControllerMappingHelper
 
 /**
  * Plays a DS/DSi ROM via MergedCore::MelonDsCore (see core/melonds_core/),
@@ -139,6 +141,15 @@ class DsEmulationActivity : AppCompatActivity() {
         super.onResume()
         if (isRunning) {
             NativeLibrary.dsUnPauseEmulation()
+        }
+        // Picks up a DS Screen Size change made from the Settings screen
+        // while this Activity was backgrounded -- the container's own
+        // dimensions haven't changed, so the layout listener in
+        // setUpScreenLayout() wouldn't otherwise re-run layoutDsScreens().
+        val w = binding.dsContentContainer.width
+        val h = binding.dsContentContainer.height
+        if (w > 0 && h > 0) {
+            layoutDsScreens(w, h)
         }
     }
 
@@ -369,7 +380,13 @@ class DsEmulationActivity : AppCompatActivity() {
         val maxScreenW = (containerW * MAX_SCREEN_WIDTH_FRACTION).toInt()
         val heightConstrainedW =
             ((containerH - gapPx) / 2f * kDsScreenWidth / kDsScreenHeight).toInt()
-        val screenW = minOf(heightConstrainedW, maxScreenW).coerceAtLeast(1)
+        // User-configurable shrink (Settings.KEY_DS_SCREEN_SCALE, 50-100%,
+        // default 100) on top of the auto-fit size above -- that size is
+        // already the largest that fits the window, so this only ever
+        // makes the screens smaller, freeing up room for the on-screen
+        // controls rather than ever overflowing the container.
+        val scalePercent = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100).coerceIn(50, 100)
+        val screenW = (minOf(heightConstrainedW, maxScreenW) * scalePercent / 100).coerceAtLeast(1)
         val screenH = (screenW.toFloat() * kDsScreenHeight / kDsScreenWidth).toInt().coerceAtLeast(1)
 
         val totalContentH = 2 * screenH + gapPx
@@ -633,6 +650,46 @@ class DsEmulationActivity : AppCompatActivity() {
     // does for the D-pad.
     private var triggerButtonState = 0
 
+    /**
+     * Settings.KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD: scans this event's axes the
+     * same way EmulationActivity.dispatchGenericMotionEvent does for the
+     * 3DS Circle Pad (NativeLibrary.ButtonType.STICK_LEFT), reading
+     * whatever axis/orientation/inversion the user has that bound to
+     * there, and converts its current direction into a DS D-pad bitmask
+     * instead. Lets a player who already rebound their Circle Pad to a
+     * less-cramped stick use that same stick for the DS D-pad without a
+     * separate rebind, since the DS side has no analog stick of its own
+     * to bind that physical input to otherwise.
+     */
+    private fun circlePadAsDpadState(event: MotionEvent): Int {
+        val input = event.device ?: return 0
+        var x = 0f
+        var y = 0f
+        for (range in input.motionRanges) {
+            val axis = range.axis
+            val mapping = preferences.getInt(InputBindingSetting.getInputAxisButtonKey(axis), -1)
+            if (mapping != NativeLibrary.ButtonType.STICK_LEFT) {
+                continue
+            }
+            val orientation = preferences.getInt(InputBindingSetting.getInputAxisOrientationKey(axis), -1)
+            if (orientation != 0 && orientation != 1) {
+                continue
+            }
+            var value = ControllerMappingHelper.scaleAxis(input, axis, event.getAxisValue(axis))
+            if (preferences.getBoolean(InputBindingSetting.getInputAxisInvertedKey(axis), false)) {
+                value = -value
+            }
+            if (orientation == 0) x = value else y = value
+        }
+
+        var state = 0
+        if (x < -0.5f) state = state or NativeLibrary.DsButtonType.DPAD_LEFT
+        if (x > 0.5f) state = state or NativeLibrary.DsButtonType.DPAD_RIGHT
+        if (y < -0.5f) state = state or NativeLibrary.DsButtonType.DPAD_UP
+        if (y > 0.5f) state = state or NativeLibrary.DsButtonType.DPAD_DOWN
+        return state
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.source and android.view.InputDevice.SOURCE_JOYSTICK ==
             android.view.InputDevice.SOURCE_JOYSTICK
@@ -645,6 +702,10 @@ class DsEmulationActivity : AppCompatActivity() {
             if (hatX > 0.5f) newState = newState or NativeLibrary.DsButtonType.DPAD_RIGHT
             if (hatY < -0.5f) newState = newState or NativeLibrary.DsButtonType.DPAD_UP
             if (hatY > 0.5f) newState = newState or NativeLibrary.DsButtonType.DPAD_DOWN
+
+            if (preferences.getBoolean(Settings.KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD, false)) {
+                newState = newState or circlePadAsDpadState(event)
+            }
 
             val released = hatDpadState and newState.inv()
             val pressed = newState and hatDpadState.inv()
@@ -694,7 +755,7 @@ class DsEmulationActivity : AppCompatActivity() {
     private fun keyCodeToDsButton(keyCode: Int): Int {
         Settings.dsButtonKeys.forEachIndexed { i, key ->
             if (matchesKeyCode(key, keyCode)) {
-                return dsButtonTypes[i]
+                return remapFaceButton(dsButtonTypes[i])
             }
         }
         Settings.dsDpadKeys.forEachIndexed { i, key ->
@@ -703,6 +764,30 @@ class DsEmulationActivity : AppCompatActivity() {
             }
         }
         return 0
+    }
+
+    /**
+     * Applies the Settings.KEY_DS_SWAP_AB / KEY_DS_SWAP_XY face-button
+     * swaps (for controllers with a PlayStation-style button layout) --
+     * shared by both the physical key/gamepad path above and
+     * DsButtonOverlayView's on-screen touch buttons, so the two stay
+     * consistent regardless of input source. A no-op for any bit that
+     * isn't A/B/X/Y (L/R, D-pad, Start/Select all pass through unchanged).
+     */
+    private fun remapFaceButton(bit: Int): Int {
+        if (preferences.getBoolean(Settings.KEY_DS_SWAP_AB, false)) {
+            when (bit) {
+                NativeLibrary.DsButtonType.BUTTON_A -> return NativeLibrary.DsButtonType.BUTTON_B
+                NativeLibrary.DsButtonType.BUTTON_B -> return NativeLibrary.DsButtonType.BUTTON_A
+            }
+        }
+        if (preferences.getBoolean(Settings.KEY_DS_SWAP_XY, false)) {
+            when (bit) {
+                NativeLibrary.DsButtonType.BUTTON_X -> return NativeLibrary.DsButtonType.BUTTON_Y
+                NativeLibrary.DsButtonType.BUTTON_Y -> return NativeLibrary.DsButtonType.BUTTON_X
+            }
+        }
+        return bit
     }
 
     /**

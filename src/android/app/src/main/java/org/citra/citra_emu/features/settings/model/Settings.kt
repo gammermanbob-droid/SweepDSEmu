@@ -253,6 +253,18 @@ class Settings {
         const val KEY_DS_BUTTON_RIGHT = "ds_button_right"
         const val KEY_DS_HOTKEY_RETURN_HOME = "ds_hotkey_return_home"
 
+        // DS-specific gameplay/display preferences, same flat "ds_"
+        // namespace as the button bindings above.
+        const val KEY_DS_SWAP_AB = "ds_swap_ab"
+        const val KEY_DS_SWAP_XY = "ds_swap_xy"
+        const val KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD = "ds_dpad_follows_circle_pad"
+        // Percentage (50-100) applied to the DS screens' auto-computed
+        // max size in DsEmulationActivity.layoutDsScreens -- that
+        // computation already picks the largest size that fits the
+        // window, so this only ever shrinks them (to free up room for
+        // the button overlay), never grows past what already fit.
+        const val KEY_DS_SCREEN_SCALE = "ds_screen_scale"
+
         val dsButtonKeys = listOf(
             KEY_DS_BUTTON_A,
             KEY_DS_BUTTON_B,

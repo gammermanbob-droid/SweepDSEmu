@@ -963,6 +963,88 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
             Settings.dsHotkeys.forEachIndexed { i: Int, key: String ->
                 add(DsInputBindingSetting(key, Settings.dsHotkeyTitles[i]))
             }
+
+            add(HeaderSetting(R.string.ds_layout_and_remapping))
+
+            val dpadFollowsCirclePad: AbstractBooleanSetting = object : AbstractBooleanSetting {
+                override var boolean: Boolean
+                    get() = preferences.getBoolean(Settings.KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD, false)
+                    set(value) {
+                        preferences.edit()
+                            .putBoolean(Settings.KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD, value)
+                            .apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getBoolean(Settings.KEY_DS_DPAD_FOLLOWS_CIRCLE_PAD, false)
+                        .toString()
+                override val defaultValue: Any = false
+            }
+            add(
+                SwitchSetting(
+                    dpadFollowsCirclePad,
+                    R.string.ds_dpad_follows_circle_pad,
+                    R.string.ds_dpad_follows_circle_pad_description
+                )
+            )
+
+            val swapAB: AbstractBooleanSetting = object : AbstractBooleanSetting {
+                override var boolean: Boolean
+                    get() = preferences.getBoolean(Settings.KEY_DS_SWAP_AB, false)
+                    set(value) {
+                        preferences.edit().putBoolean(Settings.KEY_DS_SWAP_AB, value).apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getBoolean(Settings.KEY_DS_SWAP_AB, false).toString()
+                override val defaultValue: Any = false
+            }
+            add(SwitchSetting(swapAB, R.string.ds_swap_ab, R.string.ds_swap_ab_description))
+
+            val swapXY: AbstractBooleanSetting = object : AbstractBooleanSetting {
+                override var boolean: Boolean
+                    get() = preferences.getBoolean(Settings.KEY_DS_SWAP_XY, false)
+                    set(value) {
+                        preferences.edit().putBoolean(Settings.KEY_DS_SWAP_XY, value).apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getBoolean(Settings.KEY_DS_SWAP_XY, false).toString()
+                override val defaultValue: Any = false
+            }
+            add(SwitchSetting(swapXY, R.string.ds_swap_xy, R.string.ds_swap_xy_description))
+
+            val screenScale: AbstractIntSetting = object : AbstractIntSetting {
+                override var int: Int
+                    get() = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100)
+                    set(value) {
+                        preferences.edit().putInt(Settings.KEY_DS_SCREEN_SCALE, value).apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100).toString()
+                override val defaultValue: Any = 100
+            }
+            add(
+                SliderSetting(
+                    screenScale,
+                    R.string.ds_screen_scale,
+                    R.string.ds_screen_scale_description,
+                    50,
+                    100,
+                    "%",
+                    Settings.KEY_DS_SCREEN_SCALE,
+                    100f
+                )
+            )
         }
     }
 

@@ -525,6 +525,15 @@
     <string name="emulation_overlay_options">Overlay Options</string>
     <string name="ds_controls_title">DS Controls</string>
     <string name="ds_hotkey_return_home">Return to 3DS HOME Menu</string>
+    <string name="ds_layout_and_remapping">Layout &amp; Remapping</string>
+    <string name="ds_dpad_follows_circle_pad">D-Pad Follows Circle Pad</string>
+    <string name="ds_dpad_follows_circle_pad_description">Also send D-Pad presses from whatever physical stick or axis is currently bound to the 3DS Circle Pad, in addition to a real D-Pad/hat.</string>
+    <string name="ds_swap_ab">Swap A / B</string>
+    <string name="ds_swap_ab_description">Swap the A and B buttons, for controllers with a PlayStation-style face button layout.</string>
+    <string name="ds_swap_xy">Swap X / Y</string>
+    <string name="ds_swap_xy_description">Swap the X and Y buttons, for controllers with a PlayStation-style face button layout.</string>
+    <string name="ds_screen_scale">DS Screen Size</string>
+    <string name="ds_screen_scale_description">Shrink both DS screens to leave more room for the on-screen controls.</string>
     <string name="emulation_configure_controls">Configure Controls</string>
     <string name="emulation_edit_layout">Edit Layout</string>
     <string name="emulation_done">Done</string>

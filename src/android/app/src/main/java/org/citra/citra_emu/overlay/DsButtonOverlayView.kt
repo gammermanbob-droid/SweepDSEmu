@@ -18,6 +18,7 @@ import android.view.View
 import androidx.preference.PreferenceManager
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
+import org.citra.citra_emu.features.settings.model.Settings
 
 /**
  * A DS-only rebuild of [InputOverlay]'s button layer, reusing the exact
@@ -139,6 +140,31 @@ class DsButtonOverlayView @JvmOverloads constructor(
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    /**
+     * Mirrors DsEmulationActivity's own remapFaceButton: applies the
+     * Settings.KEY_DS_SWAP_AB / KEY_DS_SWAP_XY preferences so tapping the
+     * on-screen button labeled "A" sends whichever bit the user actually
+     * wants there, matching the same swap a physical gamepad gets. Not
+     * shared code with that Activity (this View has no reference to it)
+     * -- duplicated rather than plumbing a callback through for four
+     * lines of logic.
+     */
+    private fun remapFaceButton(bit: Int): Int {
+        if (prefs.getBoolean(Settings.KEY_DS_SWAP_AB, false)) {
+            when (bit) {
+                NativeLibrary.DsButtonType.BUTTON_A -> return NativeLibrary.DsButtonType.BUTTON_B
+                NativeLibrary.DsButtonType.BUTTON_B -> return NativeLibrary.DsButtonType.BUTTON_A
+            }
+        }
+        if (prefs.getBoolean(Settings.KEY_DS_SWAP_XY, false)) {
+            when (bit) {
+                NativeLibrary.DsButtonType.BUTTON_X -> return NativeLibrary.DsButtonType.BUTTON_Y
+                NativeLibrary.DsButtonType.BUTTON_Y -> return NativeLibrary.DsButtonType.BUTTON_X
+            }
+        }
+        return bit
+    }
 
     // A drag handle at each button's bottom-right corner, only shown/
     // hit-testable in edit mode -- dragging the button's *body* moves
@@ -287,7 +313,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 for (button in buttons) {
                     if (button.updateStatus(event, pointerIndex, false, null)) {
-                        NativeLibrary.dsOnButtonEvent(button.id, true)
+                        NativeLibrary.dsOnButtonEvent(remapFaceButton(button.id), true)
                         consumed = true
                     }
                 }
@@ -295,7 +321,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 for (button in buttons) {
                     if (button.updateStatus(event, pointerIndex, false, null)) {
-                        NativeLibrary.dsOnButtonEvent(button.id, false)
+                        NativeLibrary.dsOnButtonEvent(remapFaceButton(button.id), false)
                         consumed = true
                     }
                 }
@@ -304,7 +330,7 @@ class DsButtonOverlayView @JvmOverloads constructor(
                 for (button in buttons) {
                     if (button.trackId != -1) {
                         button.trackId = -1
-                        NativeLibrary.dsOnButtonEvent(button.id, false)
+                        NativeLibrary.dsOnButtonEvent(remapFaceButton(button.id), false)
                     }
                 }
             }
