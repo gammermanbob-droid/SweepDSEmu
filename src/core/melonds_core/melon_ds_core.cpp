@@ -210,6 +210,30 @@ void LinkOrCopyDirectory(const fs::path& target, const fs::path& link) {
     if (fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
         return; // already a valid symlink from a previous run
     }
+
+    // Safety net: if `link` already resolves to the exact same real
+    // location as `target` -- most likely because some ANCESTOR
+    // directory of `link` is itself a stale symlink pointing at an
+    // ancestor of `target` (e.g. leftover from an older version of
+    // this function that symlinked a whole parent directory in one
+    // shot rather than per-subfolder) -- every destructive call below
+    // would delete `target` itself instead of just clearing a
+    // destination copy. This has actually happened: it's exactly how
+    // an earlier version of this restructuring wiped a user's real
+    // roms/nds, roms/gba, and roms/dsi folders on disk. Bail out
+    // loudly rather than risk that again.
+    if (fs::exists(link, ec)) {
+        std::error_code eq_ec;
+        if (fs::equivalent(target, link, eq_ec) && !eq_ec) {
+            LOG_ERROR(Core,
+                       "Refusing to sync {} -> {}: they already resolve to the same location on "
+                       "disk (likely a stale symlink higher up) -- syncing would delete the "
+                       "real source instead of just a destination copy. Leaving both untouched.",
+                       target.string(), link.string());
+            return;
+        }
+    }
+
     fs::remove(link, ec);
     fs::create_directory_symlink(target, link, ec);
     if (!ec && fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
@@ -241,6 +265,19 @@ fs::path BuildHomebrewSDCardRoot() {
     // DS-only virtual SD card, and can push its content past the FAT
     // image's capacity, silently dropping unrelated files (see
     // EnsureSDCardImageFitsContent).
+    // A previous version of this function symlinked the whole of
+    // `roms` in one shot (root/roms -> sdmc/roms) rather than per
+    // platform subfolder as below. If that symlink is still here from
+    // an older run, `root / "roms" / platform` would resolve straight
+    // through it to `sdmc / "roms" / platform` -- the exact same real
+    // directory LinkOrCopyDirectory is about to treat as a "link" to
+    // manage, which is what let it delete real user data (see
+    // LinkOrCopyDirectory's own equivalence check, now a second layer
+    // of protection against this same mistake). fs::remove() only
+    // removes the symlink itself, never anything it points to.
+    if (fs::is_symlink(root / "roms", ec)) {
+        fs::remove(root / "roms", ec);
+    }
     fs::create_directories(root / "roms", ec);
     for (const char* platform : {"nds", "dsi", "gba"}) {
         const fs::path target = sdmc / "roms" / platform;
