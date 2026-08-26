@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same Blue Material3 palette as the main SweepDSEmu app's Theme.Citra.Blue
+     (src/android/app/src/main/res/values/citra_colors.xml), copied here since
+     NDSBrewer is a separate module/APK that can't reference :app's resources
+     directly, kept in visual sync with the rest of the SweepDSEmu family. -->
+<resources>
+    <color name="ndsbrewer_primary">#154FE2</color>
+    <color name="ndsbrewer_onPrimary">#FFFFFF</color>
+    <color name="ndsbrewer_primaryContainer">#DCE1FF</color>
+    <color name="ndsbrewer_onPrimaryContainer">#001551</color>
+    <color name="ndsbrewer_secondary">#595D72</color>
+    <color name="ndsbrewer_secondaryContainer">#DEE1F9</color>
+    <color name="ndsbrewer_onSecondaryContainer">#161B2C</color>
+    <color name="ndsbrewer_background">#FEFBFF</color>
+    <color name="ndsbrewer_onBackground">#1B1B1F</color>
+    <color name="ndsbrewer_surface">#FEFBFF</color>
+    <color name="ndsbrewer_onSurface">#1B1B1F</color>
+    <color name="ndsbrewer_surfaceVariant">#E2E1EC</color>
+    <color name="ndsbrewer_onSurfaceVariant">#45464F</color>
+    <color name="ndsbrewer_outline">#767680</color>
+    <color name="ndsbrewer_error">#BA1A1A</color>
+    <color name="ndsbrewer_onError">#FFFFFF</color>
+</resources>

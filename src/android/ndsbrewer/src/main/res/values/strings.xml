@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SweepDSEmuNDSBrewer</string>
+    <string name="delete">Delete</string>
+
+    <string name="ndsbrewer_storage_permission_title">Storage access needed</string>
+    <string name="ndsbrewer_storage_permission_message">NDSBrewer needs full file access to read your DS ROMs and build forwarders in the same profile folder SweepDSEmu uses. Grant "Allow management of all files" on the next screen.</string>
+
+    <string name="ndsbrewer_pick_directory_title">Select your SweepDSEmu profile folder</string>
+    <string name="ndsbrewer_pick_directory_message">Pick the same folder you selected in SweepDSEmu (e.g. AzaharPlus) so NDSBrewer can find your DS ROMs and register forwarders in the same place.</string>
+    <string name="ndsbrewer_pick_directory_button">Choose Folder</string>
+    <string name="ndsbrewer_directory_invalid">That folder couldn\'t be opened. Please pick your SweepDSEmu profile folder.</string>
+
+    <string name="ndsbrewer_section_build">Build forwarders</string>
+    <string name="ndsbrewer_select_all">Select All</string>
+    <string name="ndsbrewer_install_after_build">Install after building (deletes the .cia once installed)</string>
+    <string name="ndsbrewer_build_button">Build Forwarders</string>
+    <string name="ndsbrewer_section_manage">Manage existing forwarders</string>
+
+    <string name="ndsbrewer_no_roms_selected">No ROMs selected.</string>
+    <string name="ndsbrewer_no_roms_found">No .nds/.dsi ROMs found in sdmc/roms/nds or sdmc/roms/dsi.</string>
+    <string name="ndsbrewer_building">Building %1$s…</string>
+    <string name="ndsbrewer_build_failed">%1$s: %2$s</string>
+    <string name="ndsbrewer_build_done">Built %1$d forwarder(s).</string>
+    <string name="ndsbrewer_build_done_with_failures">Built %1$d forwarder(s), %2$d failed:\n%3$s</string>
+    <string name="ndsbrewer_install_not_installed">SweepDSEmu isn\'t installed -- install it to enable one-tap installing. The .cia was still saved to ndsbrewer_output/ in your profile folder.</string>
+    <string name="ndsbrewer_install_permission_denied">Couldn\'t hand off to SweepDSEmu (mismatched app signature) -- the .cia was still saved to ndsbrewer_output/ in your profile folder for manual install.</string>
+    <string name="ndsbrewer_delete_confirm_title">Remove forwarder?</string>
+    <string name="ndsbrewer_delete_confirm_message">This removes %1$s from the 3DS HOME Menu and deletes its installed data. The original DS ROM is not affected.</string>
+    <string name="ndsbrewer_cancel">Cancel</string>
+</resources>

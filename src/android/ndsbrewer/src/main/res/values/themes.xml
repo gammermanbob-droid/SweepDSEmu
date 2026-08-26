@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NdsBrewer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/ndsbrewer_primary</item>
+        <item name="colorOnPrimary">@color/ndsbrewer_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/ndsbrewer_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/ndsbrewer_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/ndsbrewer_secondary</item>
+        <item name="colorSecondaryContainer">@color/ndsbrewer_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/ndsbrewer_onSecondaryContainer</item>
+        <item name="android:colorBackground">@color/ndsbrewer_background</item>
+        <item name="colorOnBackground">@color/ndsbrewer_onBackground</item>
+        <item name="colorSurface">@color/ndsbrewer_surface</item>
+        <item name="colorOnSurface">@color/ndsbrewer_onSurface</item>
+        <item name="colorSurfaceVariant">@color/ndsbrewer_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/ndsbrewer_onSurfaceVariant</item>
+        <item name="colorOutline">@color/ndsbrewer_outline</item>
+        <item name="colorError">@color/ndsbrewer_error</item>
+        <item name="colorOnError">@color/ndsbrewer_onError</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
