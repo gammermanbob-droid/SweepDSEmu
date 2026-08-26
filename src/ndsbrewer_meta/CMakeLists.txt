@@ -47,14 +47,20 @@ if (ENABLE_QT)
     target_link_libraries(ndsbrewer_meta PRIVATE Boost::boost Qt6::Widgets)
     # For the martini-glass loading widget (martini_progress_widget.*) --
     # QSvgWidget specifically lives in SvgWidgets, a separate Qt6 module
-    # from plain Svg (QSvgRenderer/QSvgGenerator). Both are confirmed
-    # available via Homebrew's qtsvg formula. Unlike QtPdf/QtVirtualKeyboard
-    # (which macdeployqt separately warns about being unable to resolve --
-    # unrelated optional plugin-scan noise, not something this target
-    # references at all), explicitly linking these gives macdeployqt a
-    # real, resolvable reason to bundle them.
-    find_package(Qt6 REQUIRED COMPONENTS Svg SvgWidgets)
-    target_link_libraries(ndsbrewer_meta PRIVATE Qt6::Svg Qt6::SvgWidgets)
+    # from plain Svg (QSvgRenderer/QSvgGenerator). Deliberately NOT
+    # REQUIRED: citra_qt itself never needs Svg, so some environments that
+    # can already build the rest of this project (e.g. the Linux CI
+    # container) don't have it installed. Making it required here broke
+    # the entire ndsbrewer_meta configure step -- and since this
+    # subdirectory is added unconditionally alongside citra_meta, that took
+    # the whole Linux build down with it, not just this target. Falls back
+    # to a plain QProgressBar (see martini_progress_widget.cpp's
+    # NDSBREWER_HAS_SVG branch) when unavailable.
+    find_package(Qt6 COMPONENTS Svg SvgWidgets)
+    if (Qt6Svg_FOUND AND Qt6SvgWidgets_FOUND)
+        target_link_libraries(ndsbrewer_meta PRIVATE Qt6::Svg Qt6::SvgWidgets)
+        target_compile_definitions(ndsbrewer_meta PRIVATE NDSBREWER_HAS_SVG)
+    endif()
 endif()
 
 if (ENABLE_QT AND USE_DISCORD_PRESENCE)

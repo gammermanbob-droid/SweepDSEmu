@@ -6,9 +6,14 @@
 #include <cmath>
 
 #include <QLabel>
-#include <QSvgWidget>
 #include <QVBoxLayout>
+#ifdef NDSBREWER_HAS_SVG
+#include <QSvgWidget>
+#else
+#include <QProgressBar>
+#endif
 
+#ifdef NDSBREWER_HAS_SVG
 namespace {
 
 // Glass triangle vertices (viewBox coordinates, matching the reference
@@ -145,14 +150,22 @@ const char kSvgTemplate[] = R"SVG(<svg width="400" height="380" viewBox="0 0 800
 )SVG";
 
 } // namespace
+#endif // NDSBREWER_HAS_SVG
 
 MartiniProgressWidget::MartiniProgressWidget(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setAlignment(Qt::AlignHCenter);
 
+#ifdef NDSBREWER_HAS_SVG
     svg_ = new QSvgWidget(this);
     svg_->setFixedSize(240, 228); // matches the SVG's 800:760 aspect ratio
     layout->addWidget(svg_, 0, Qt::AlignHCenter);
+#else
+    progress_bar_ = new QProgressBar(this);
+    progress_bar_->setRange(0, 100);
+    progress_bar_->setTextVisible(true);
+    layout->addWidget(progress_bar_);
+#endif
 
     label_ = new QLabel(this);
     label_->setAlignment(Qt::AlignHCenter);
@@ -163,11 +176,15 @@ MartiniProgressWidget::MartiniProgressWidget(QWidget* parent) : QWidget(parent) 
 
 void MartiniProgressWidget::SetProgress(int percent) {
     percent_ = std::clamp(percent, 0, 100);
+#ifdef NDSBREWER_HAS_SVG
     const QByteArray svg = QString::fromLatin1(kSvgTemplate)
                                 .arg(BuildLiquidPathData(percent_))
                                 .arg(percent_)
                                 .toUtf8();
     svg_->load(svg);
+#else
+    progress_bar_->setValue(percent_);
+#endif
 }
 
 void MartiniProgressWidget::SetLabelText(const QString& text) {
