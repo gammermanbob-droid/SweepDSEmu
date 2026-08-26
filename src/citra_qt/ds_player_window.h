@@ -12,16 +12,19 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <QAudioSink>
 #include <QByteArray>
 #include <QImage>
 #include <QThread>
+#include <QTimer>
 #include <QWidget>
 
 #include "citra_qt/ds_controls_config.h"
 #include "core/emulation_core.h"
+#include "core/frontend/input.h"
 
 namespace MergedCore {
 class EmulationCore;
@@ -108,6 +111,7 @@ private slots:
 private:
     void UpdateTouch(const QPoint& widget_pos, bool pressed);
     void RebuildKeyMask();
+    void PollController();
 
     // Largest kScreenWidth:kScreenHeight-aspect rect that fits inside
     // `area`, centered within it (letterboxed/pillarboxed as needed).
@@ -143,6 +147,31 @@ private:
     // DSControlsConfig::LoadReturnToHomeMenuKey() — same
     // load-once-at-construction rationale as key_to_button_ above.
     int return_to_home_menu_key_;
+
+    // Controller (SDL joystick/gamepad) bindings, built once at
+    // construction from DSControlsConfig::LoadControllerBindings().
+    // Unlike key_to_button_, which reacts to Qt key press/release
+    // events, controller state has no equivalent Qt event to hook —
+    // controller_poll_timer_ polls each bound device's GetStatus()
+    // every ~16ms (roughly one DS frame) instead.
+    std::map<MergedCore::DSButton, std::unique_ptr<Input::ButtonDevice>> controller_devices_;
+    QTimer* controller_poll_timer_ = nullptr;
+
+    // Optional controller binding for the "return to 3DS HOME Menu"
+    // hotkey, built once at construction from
+    // DSControlsConfig::LoadHomeMenuControllerBinding() — polled
+    // alongside controller_devices_ in PollController() rather than
+    // folded into that map, since it isn't a MergedCore::DSButton and
+    // triggers RequestReturnToHomeMenu()/close() instead of feeding
+    // controller_buttons_.
+    std::unique_ptr<Input::ButtonDevice> home_menu_controller_device_;
+    // Currently-held controller buttons, OR'd with input_state_.buttons
+    // (which tracks only keyboard-held buttons) in RebuildKeyMask()
+    // rather than merged into input_state_.buttons directly — keeping
+    // the two sources separate means a stuck/misread controller button
+    // can never mask out what the keyboard is actually doing or vice
+    // versa.
+    uint32_t controller_buttons_ = 0;
 
     static constexpr int kScreenWidth = 256;
     static constexpr int kScreenHeight = 192;

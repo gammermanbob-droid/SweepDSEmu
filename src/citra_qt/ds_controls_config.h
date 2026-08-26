@@ -27,6 +27,17 @@ KeyBindings DefaultKeyBindings();
 KeyBindings LoadKeyBindings();
 void SaveKeyBindings(const KeyBindings& bindings);
 
+// Serialized Common::ParamPackage strings (as produced by Azahar's
+// existing InputCommon::Polling machinery — same format the 3DS side's
+// Configure Controls dialog uses), keyed by DS button. Unlike
+// KeyBindings, a button missing here (empty string) just means
+// "no controller binding" — a controller is optional, so there's no
+// sensible non-empty default the way there is for the keyboard.
+using ControllerBindings = QMap<MergedCore::DSButton, QString>;
+
+ControllerBindings LoadControllerBindings();
+void SaveControllerBindings(const ControllerBindings& bindings);
+
 // Short display name for a DS button ("A", "Start", "Left", ...).
 QString ButtonName(MergedCore::DSButton button);
 
@@ -40,5 +51,18 @@ const QList<MergedCore::DSButton>& AllButtons();
 int DefaultReturnToHomeMenuKey();
 int LoadReturnToHomeMenuKey();
 void SaveReturnToHomeMenuKey(int key);
+
+// Optional controller binding for the same hotkey (serialized
+// Common::ParamPackage, same format as ControllerBindings above).
+// Kept as a plain string rather than folded into ControllerBindings
+// for the same reason the keyboard version is separate from
+// KeyBindings — this isn't a MergedCore::DSButton. A controller
+// binding matters more here than it does for ordinary DS buttons: a
+// physical controller's Home/Guide button is frequently intercepted
+// by the OS before a *keyboard*-style binding would ever see it (see
+// ds_player_window.cpp), so this is often the only way to actually
+// use it from a controller.
+QString LoadHomeMenuControllerBinding();
+void SaveHomeMenuControllerBinding(const QString& serialized);
 
 } // namespace DSControlsConfig

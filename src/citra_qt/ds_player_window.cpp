@@ -176,6 +176,25 @@ DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidg
     }
     return_to_home_menu_key_ = DSControlsConfig::LoadReturnToHomeMenuKey();
 
+    const auto controller_bindings = DSControlsConfig::LoadControllerBindings();
+    for (auto it = controller_bindings.constBegin(); it != controller_bindings.constEnd(); ++it) {
+        if (!it.value().isEmpty()) {
+            controller_devices_[it.key()] =
+                Input::CreateDevice<Input::ButtonDevice>(it.value().toStdString());
+        }
+    }
+    const QString home_menu_controller_binding = DSControlsConfig::LoadHomeMenuControllerBinding();
+    if (!home_menu_controller_binding.isEmpty()) {
+        home_menu_controller_device_ =
+            Input::CreateDevice<Input::ButtonDevice>(home_menu_controller_binding.toStdString());
+    }
+
+    if (!controller_devices_.empty() || home_menu_controller_device_) {
+        controller_poll_timer_ = new QTimer(this);
+        connect(controller_poll_timer_, &QTimer::timeout, this, &DSPlayerWindow::PollController);
+        controller_poll_timer_->start(16);
+    }
+
     auto core = MergedCore::CoreFactory::CreateFor(rom_path.toStdString());
     const int audio_rate = core->GetAudioSampleRate();
     if (audio_rate > 0) {
@@ -319,7 +338,32 @@ void DSPlayerWindow::UpdateTouch(const QPoint& widget_pos, bool pressed) {
 }
 
 void DSPlayerWindow::RebuildKeyMask() {
-    thread_->SetInput(input_state_);
+    MergedCore::InputState combined = input_state_;
+    combined.buttons |= controller_buttons_;
+    thread_->SetInput(combined);
+}
+
+void DSPlayerWindow::PollController() {
+    // Checked ahead of the regular DS-button poll below since a hit
+    // here closes the window immediately (same as the keyboard hotkey
+    // in keyPressEvent) — no point updating controller_buttons_ for a
+    // frame that's about to end anyway.
+    if (home_menu_controller_device_ && home_menu_controller_device_->GetStatus()) {
+        emit RequestReturnToHomeMenu();
+        close();
+        return;
+    }
+
+    uint32_t buttons = 0;
+    for (const auto& [button, device] : controller_devices_) {
+        if (device->GetStatus()) {
+            buttons |= static_cast<uint32_t>(button);
+        }
+    }
+    if (buttons != controller_buttons_) {
+        controller_buttons_ = buttons;
+        RebuildKeyMask();
+    }
 }
 
 void DSPlayerWindow::mousePressEvent(QMouseEvent* event) {

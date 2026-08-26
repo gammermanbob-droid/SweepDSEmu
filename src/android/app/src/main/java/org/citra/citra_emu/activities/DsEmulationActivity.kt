@@ -29,6 +29,7 @@ import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.ActivityDsEmulationBinding
 import org.citra.citra_emu.display.SecondaryDisplay
+import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.overlay.DsButtonOverlayView
@@ -464,6 +465,10 @@ class DsEmulationActivity : AppCompatActivity() {
                     showOverlayMenu()
                     true
                 }
+                R.id.menu_ds_controls -> {
+                    SettingsActivity.launch(this, Settings.SECTION_DS_CONTROLS, "")
+                    true
+                }
                 R.id.menu_settings -> {
                     SettingsActivity.launch(this, SettingsFile.FILE_NAME_CONFIG, "")
                     true
@@ -575,9 +580,17 @@ class DsEmulationActivity : AppCompatActivity() {
             return true
         }
 
-        if (event.keyCode == kReturnToHomeMenuKeyCode) {
+        // User-configurable (DsControlsSettings) -- BUTTON_MODE is only
+        // the fallback default for as long as this hotkey is unbound.
+        // Fires directly (no confirm dialog), matching the Qt
+        // frontend's own controller-bound "return to HOME menu" hotkey
+        // (DSPlayerWindow::PollController) -- unlike the on-screen HOME
+        // button/drawer "Exit" path below, which still confirms first,
+        // since a controller hotkey the user deliberately bound is much
+        // less likely to be an accidental press than a stray touch.
+        if (event.keyCode == returnToHomeMenuKeyCode()) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                toggleDrawer()
+                returnToThreeDsHomeMenu()
             }
             return true
         }
@@ -589,6 +602,15 @@ class DsEmulationActivity : AppCompatActivity() {
         }
 
         return super.dispatchKeyEvent(event)
+    }
+
+    private val preferences: android.content.SharedPreferences by lazy {
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+    }
+
+    private fun returnToHomeMenuKeyCode(): Int {
+        val bound = preferences.getInt(Settings.KEY_DS_HOTKEY_RETURN_HOME, 0)
+        return if (bound != 0) bound else kReturnToHomeMenuKeyCode
     }
 
     // Many Bluetooth gamepads report their D-pad as a HAT axis (continuous
@@ -627,27 +649,75 @@ class DsEmulationActivity : AppCompatActivity() {
     }
 
     /**
-     * Maps both standard Android gamepad key codes (what a Bluetooth
-     * controller's HID inputs get translated into by the OS) and common
-     * keyboard fallbacks onto DS buttons. Not yet user-remappable --
-     * matches DSControlsConfig's *defaults* on the Qt frontend, not its
-     * full rebinding UI.
+     * User-remappable (see DsControlsSettings/DsInputBindingSetting):
+     * for each DS button, a configured binding is checked first; a
+     * button that's never been rebound falls back to
+     * [defaultKeyCodesFor]'s original hardcoded defaults (standard
+     * Android gamepad key codes plus a keyboard fallback), so existing
+     * setups keep working unchanged until the user opens the new "DS
+     * Controls" settings screen.
      */
-    private fun keyCodeToDsButton(keyCode: Int): Int = when (keyCode) {
-        KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_Z -> NativeLibrary.DsButtonType.BUTTON_A
-        KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_X -> NativeLibrary.DsButtonType.BUTTON_B
-        KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_A -> NativeLibrary.DsButtonType.BUTTON_X
-        KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_S -> NativeLibrary.DsButtonType.BUTTON_Y
-        KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_Q -> NativeLibrary.DsButtonType.BUTTON_L
-        KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_W -> NativeLibrary.DsButtonType.BUTTON_R
-        KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ENTER -> NativeLibrary.DsButtonType.BUTTON_START
-        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_SPACE -> NativeLibrary.DsButtonType.BUTTON_SELECT
-        KeyEvent.KEYCODE_DPAD_UP -> NativeLibrary.DsButtonType.DPAD_UP
-        KeyEvent.KEYCODE_DPAD_DOWN -> NativeLibrary.DsButtonType.DPAD_DOWN
-        KeyEvent.KEYCODE_DPAD_LEFT -> NativeLibrary.DsButtonType.DPAD_LEFT
-        KeyEvent.KEYCODE_DPAD_RIGHT -> NativeLibrary.DsButtonType.DPAD_RIGHT
-        else -> 0
+    private fun keyCodeToDsButton(keyCode: Int): Int {
+        Settings.dsButtonKeys.forEachIndexed { i, key ->
+            if (matchesKeyCode(key, keyCode)) {
+                return dsButtonTypes[i]
+            }
+        }
+        Settings.dsDpadKeys.forEachIndexed { i, key ->
+            if (matchesKeyCode(key, keyCode)) {
+                return dsDpadButtonTypes[i]
+            }
+        }
+        return 0
     }
+
+    /**
+     * True if [keyCode] should trigger [dsSettingKey]'s DS button: an
+     * explicit user binding (if any) is the ONLY thing checked once one
+     * exists -- rebinding fully replaces the default rather than
+     * layering on top of it, matching the Qt frontend's own
+     * DSControlsConfig rebinding UI. A button that's never been
+     * rebound falls back to [defaultKeyCodesFor]'s original hardcoded
+     * candidates instead, so existing setups keep working unchanged
+     * until the user opens the new "DS Controls" settings screen.
+     */
+    private fun matchesKeyCode(dsSettingKey: String, keyCode: Int): Boolean {
+        val bound = preferences.getInt(dsSettingKey, 0)
+        return if (bound != 0) keyCode == bound else keyCode in defaultKeyCodesFor(dsSettingKey)
+    }
+
+    private fun defaultKeyCodesFor(dsSettingKey: String): List<Int> = when (dsSettingKey) {
+        Settings.KEY_DS_BUTTON_A -> listOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_Z)
+        Settings.KEY_DS_BUTTON_B -> listOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_X)
+        Settings.KEY_DS_BUTTON_X -> listOf(KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_A)
+        Settings.KEY_DS_BUTTON_Y -> listOf(KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_S)
+        Settings.KEY_DS_BUTTON_L -> listOf(KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_Q)
+        Settings.KEY_DS_BUTTON_R -> listOf(KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_W)
+        Settings.KEY_DS_BUTTON_START -> listOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ENTER)
+        Settings.KEY_DS_BUTTON_SELECT -> listOf(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_SPACE)
+        Settings.KEY_DS_BUTTON_UP -> listOf(KeyEvent.KEYCODE_DPAD_UP)
+        Settings.KEY_DS_BUTTON_DOWN -> listOf(KeyEvent.KEYCODE_DPAD_DOWN)
+        Settings.KEY_DS_BUTTON_LEFT -> listOf(KeyEvent.KEYCODE_DPAD_LEFT)
+        Settings.KEY_DS_BUTTON_RIGHT -> listOf(KeyEvent.KEYCODE_DPAD_RIGHT)
+        else -> emptyList()
+    }
+
+    private val dsButtonTypes = listOf(
+        NativeLibrary.DsButtonType.BUTTON_A,
+        NativeLibrary.DsButtonType.BUTTON_B,
+        NativeLibrary.DsButtonType.BUTTON_X,
+        NativeLibrary.DsButtonType.BUTTON_Y,
+        NativeLibrary.DsButtonType.BUTTON_L,
+        NativeLibrary.DsButtonType.BUTTON_R,
+        NativeLibrary.DsButtonType.BUTTON_SELECT,
+        NativeLibrary.DsButtonType.BUTTON_START
+    )
+    private val dsDpadButtonTypes = listOf(
+        NativeLibrary.DsButtonType.DPAD_UP,
+        NativeLibrary.DsButtonType.DPAD_DOWN,
+        NativeLibrary.DsButtonType.DPAD_LEFT,
+        NativeLibrary.DsButtonType.DPAD_RIGHT
+    )
 
     /**
      * Stops the current DS session and boots the 3DS HOME Menu for the

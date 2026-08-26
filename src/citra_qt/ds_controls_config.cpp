@@ -23,6 +23,11 @@ QString SettingsKey(DSButton button) {
     return QStringLiteral("key_") + ButtonName(button);
 }
 
+// e.g. "controller_A".
+QString ControllerSettingsKey(DSButton button) {
+    return QStringLiteral("controller_") + ButtonName(button);
+}
+
 } // namespace
 
 const QList<DSButton>& AllButtons() {
@@ -118,6 +123,30 @@ void SaveKeyBindings(const KeyBindings& bindings) {
     settings.sync();
 }
 
+ControllerBindings LoadControllerBindings() {
+    QSettings settings = OpenSettings();
+    ControllerBindings bindings;
+
+    settings.beginGroup(QStringLiteral("DSControls"));
+    for (DSButton button : AllButtons()) {
+        bindings[button] = settings.value(ControllerSettingsKey(button)).toString();
+    }
+    settings.endGroup();
+
+    return bindings;
+}
+
+void SaveControllerBindings(const ControllerBindings& bindings) {
+    QSettings settings = OpenSettings();
+
+    settings.beginGroup(QStringLiteral("DSControls"));
+    for (DSButton button : AllButtons()) {
+        settings.setValue(ControllerSettingsKey(button), bindings.value(button));
+    }
+    settings.endGroup();
+    settings.sync();
+}
+
 int DefaultReturnToHomeMenuKey() {
     return Qt::Key_F12;
 }
@@ -142,6 +171,22 @@ void SaveReturnToHomeMenuKey(int key) {
     QSettings settings = OpenSettings();
     settings.beginGroup(QStringLiteral("DSControls"));
     settings.setValue(QStringLiteral("key_ReturnToHomeMenu"), key);
+    settings.endGroup();
+    settings.sync();
+}
+
+QString LoadHomeMenuControllerBinding() {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSControls"));
+    const QString value = settings.value(QStringLiteral("controller_ReturnToHomeMenu")).toString();
+    settings.endGroup();
+    return value;
+}
+
+void SaveHomeMenuControllerBinding(const QString& serialized) {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSControls"));
+    settings.setValue(QStringLiteral("controller_ReturnToHomeMenu"), serialized);
     settings.endGroup();
     settings.sync();
 }

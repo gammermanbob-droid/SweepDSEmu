@@ -48,6 +48,7 @@ import org.citra.citra_emu.features.settings.model.AbstractStringSetting
 import org.citra.citra_emu.features.settings.model.FloatSetting
 import org.citra.citra_emu.features.settings.model.ScaledFloatSetting
 import org.citra.citra_emu.features.settings.model.view.DateTimeSetting
+import org.citra.citra_emu.features.settings.model.view.DsInputBindingSetting
 import org.citra.citra_emu.features.settings.model.view.InputBindingSetting
 import org.citra.citra_emu.features.settings.model.view.MultiChoiceSetting
 import org.citra.citra_emu.features.settings.model.view.SettingsItem
@@ -58,6 +59,7 @@ import org.citra.citra_emu.features.settings.model.view.StringSingleChoiceSettin
 import org.citra.citra_emu.features.settings.model.view.SubmenuSetting
 import org.citra.citra_emu.features.settings.model.view.SwitchSetting
 import org.citra.citra_emu.features.settings.ui.viewholder.DateTimeViewHolder
+import org.citra.citra_emu.features.settings.ui.viewholder.DsInputBindingSettingViewHolder
 import org.citra.citra_emu.features.settings.ui.viewholder.HeaderViewHolder
 import org.citra.citra_emu.features.settings.ui.viewholder.InputBindingSettingViewHolder
 import org.citra.citra_emu.features.settings.ui.viewholder.MultiChoiceViewHolder
@@ -69,6 +71,7 @@ import org.citra.citra_emu.features.settings.ui.viewholder.StringInputViewHolder
 import org.citra.citra_emu.features.settings.ui.viewholder.SubmenuViewHolder
 import org.citra.citra_emu.features.settings.ui.viewholder.SwitchSettingViewHolder
 import org.citra.citra_emu.fragments.AutoMapDialogFragment
+import org.citra.citra_emu.fragments.DsInputBindingBottomSheetDialogFragment
 import org.citra.citra_emu.fragments.MessageDialogFragment
 import org.citra.citra_emu.fragments.MotionBottomSheetDialogFragment
 import org.citra.citra_emu.utils.SystemSaveGame
@@ -134,6 +137,10 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
 
             SettingsItem.TYPE_STRING_INPUT -> {
                 StringInputViewHolder(ListItemSettingBinding.inflate(inflater), this)
+            }
+
+            SettingsItem.TYPE_DS_INPUT_BINDING -> {
+                DsInputBindingSettingViewHolder(ListItemSettingBinding.inflate(inflater), this)
             }
 
             else -> {
@@ -448,6 +455,18 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
         ).show(activity.supportFragmentManager, MotionBottomSheetDialogFragment.TAG)
     }
 
+    fun onDsInputBindingClick(item: DsInputBindingSetting, position: Int) {
+        val activity = fragmentView.activityView as FragmentActivity
+        DsInputBindingBottomSheetDialogFragment.newInstance(
+            item,
+            { closeDialog() },
+            {
+                notifyItemChanged(position)
+                fragmentView.onSettingChanged()
+            }
+        ).show(activity.supportFragmentManager, DsInputBindingBottomSheetDialogFragment.TAG)
+    }
+
     fun onStringInputClick(item: StringInputSetting, position: Int) {
         clickedItem = item
         clickedPosition = position
@@ -632,6 +651,21 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
             .setMessage(R.string.reset_setting_confirmation)
             .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int ->
                 setting.removeOldMapping()
+                notifyItemChanged(position)
+                fragmentView.onSettingChanged()
+                fragmentView.loadSettingsList()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+
+        return true
+    }
+
+    fun onDsInputBindingLongClick(setting: DsInputBindingSetting, position: Int): Boolean {
+        MaterialAlertDialogBuilder(context)
+            .setMessage(R.string.reset_setting_confirmation)
+            .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int ->
+                setting.clear()
                 notifyItemChanged(position)
                 fragmentView.onSettingChanged()
                 fragmentView.loadSettingsList()

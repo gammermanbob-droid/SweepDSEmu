@@ -24,6 +24,11 @@
         android:title="@string/emulation_overlay_options" />
 
     <item
+        android:id="@+id/menu_ds_controls"
+        android:icon="@drawable/ic_controller"
+        android:title="@string/ds_controls_title" />
+
+    <item
         android:id="@+id/menu_settings"
         android:icon="@drawable/ic_settings"
         android:title="@string/preferences_settings" />

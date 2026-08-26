@@ -34,6 +34,7 @@ import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.model.StringSetting
 import org.citra.citra_emu.features.settings.model.view.DateTimeSetting
 import org.citra.citra_emu.features.settings.model.view.HeaderSetting
+import org.citra.citra_emu.features.settings.model.view.DsInputBindingSetting
 import org.citra.citra_emu.features.settings.model.view.InputBindingSetting
 import org.citra.citra_emu.features.settings.model.view.MultiChoiceSetting
 import org.citra.citra_emu.features.settings.model.view.RunnableSetting
@@ -104,6 +105,8 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
             Settings.SECTION_CAMERA -> addCameraSettings(sl)
 
             Settings.SECTION_CONTROLS -> addControlsSettings(sl)
+
+            Settings.SECTION_DS_CONTROLS -> addDsControlsSettings(sl)
 
             Settings.SECTION_RENDERER -> addGraphicsSettings(sl)
 
@@ -941,6 +944,27 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
             override val valueAsString = preferences.getString(key, "")!!
             override val defaultValue = ""
         }
+
+    private fun addDsControlsSettings(sl: ArrayList<SettingsItem>) {
+        settingsActivity.setToolbarTitle(settingsActivity.getString(R.string.ds_controls_title))
+
+        sl.apply {
+            add(HeaderSetting(R.string.generic_buttons))
+            Settings.dsButtonKeys.forEachIndexed { i: Int, key: String ->
+                add(DsInputBindingSetting(key, Settings.dsButtonTitles[i]))
+            }
+
+            add(HeaderSetting(R.string.controller_dpad_button))
+            Settings.dsDpadKeys.forEachIndexed { i: Int, key: String ->
+                add(DsInputBindingSetting(key, Settings.dsDpadTitles[i]))
+            }
+
+            add(HeaderSetting(R.string.controller_hotkeys))
+            Settings.dsHotkeys.forEachIndexed { i: Int, key: String ->
+                add(DsInputBindingSetting(key, Settings.dsHotkeyTitles[i]))
+            }
+        }
+    }
 
     private fun addGraphicsSettings(sl: ArrayList<SettingsItem>) {
         settingsActivity.setToolbarTitle(settingsActivity.getString(R.string.preferences_graphics))

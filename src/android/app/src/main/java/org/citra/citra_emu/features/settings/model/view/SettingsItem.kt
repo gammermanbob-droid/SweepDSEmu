@@ -52,5 +52,6 @@ abstract class SettingsItem(
         const val TYPE_STRING_INPUT = 9
         const val TYPE_FLOAT_INPUT = 10
         const val TYPE_MULTI_CHOICE = 11
+        const val TYPE_DS_INPUT_BINDING = 12
     }
 }

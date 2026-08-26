@@ -523,6 +523,8 @@
     <string name="emulation_show_fps">Show FPS</string>
     <string name="emulation_haptic_feedback">Haptic Feedback</string>
     <string name="emulation_overlay_options">Overlay Options</string>
+    <string name="ds_controls_title">DS Controls</string>
+    <string name="ds_hotkey_return_home">Return to 3DS HOME Menu</string>
     <string name="emulation_configure_controls">Configure Controls</string>
     <string name="emulation_edit_layout">Edit Layout</string>
     <string name="emulation_done">Done</string>

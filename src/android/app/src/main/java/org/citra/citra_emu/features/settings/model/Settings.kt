@@ -101,6 +101,7 @@ class Settings {
         const val SECTION_SYSTEM = "System"
         const val SECTION_CAMERA = "Camera"
         const val SECTION_CONTROLS = "Controls"
+        const val SECTION_DS_CONTROLS = "DSControls"
         const val SECTION_RENDERER = "Renderer"
         const val SECTION_LAYOUT = "Layout"
         const val SECTION_UTILITY = "Utility"
@@ -225,6 +226,67 @@ class Settings {
             R.string.turbo_limit_hotkey,
             R.string.button_combo
         )
+
+        // DS button/hotkey bindings (see DsInputBindingSetting) -- a
+        // separate, self-contained key namespace from the 3DS
+        // InputMapping_HostAxis_* one above. Each key here stores a
+        // plain Android KeyEvent keyCode as an Int preference, unlike
+        // the 3DS keys which key off the *physical* input and store a
+        // StringSet of native ButtonType codes -- reusing that scheme
+        // for DS would mean a DS binding could inject a bogus 3DS
+        // ButtonType value into the same physical key's shared set,
+        // corrupting real 3DS gameplay the next time that same
+        // physical button is pressed. The "ds_" prefix keeps this
+        // flat-namespace SharedPreferences key from ever colliding
+        // with a 3DS setting key or an InputMapping_HostAxis_* one.
+        const val KEY_DS_BUTTON_A = "ds_button_a"
+        const val KEY_DS_BUTTON_B = "ds_button_b"
+        const val KEY_DS_BUTTON_X = "ds_button_x"
+        const val KEY_DS_BUTTON_Y = "ds_button_y"
+        const val KEY_DS_BUTTON_L = "ds_button_l"
+        const val KEY_DS_BUTTON_R = "ds_button_r"
+        const val KEY_DS_BUTTON_SELECT = "ds_button_select"
+        const val KEY_DS_BUTTON_START = "ds_button_start"
+        const val KEY_DS_BUTTON_UP = "ds_button_up"
+        const val KEY_DS_BUTTON_DOWN = "ds_button_down"
+        const val KEY_DS_BUTTON_LEFT = "ds_button_left"
+        const val KEY_DS_BUTTON_RIGHT = "ds_button_right"
+        const val KEY_DS_HOTKEY_RETURN_HOME = "ds_hotkey_return_home"
+
+        val dsButtonKeys = listOf(
+            KEY_DS_BUTTON_A,
+            KEY_DS_BUTTON_B,
+            KEY_DS_BUTTON_X,
+            KEY_DS_BUTTON_Y,
+            KEY_DS_BUTTON_L,
+            KEY_DS_BUTTON_R,
+            KEY_DS_BUTTON_SELECT,
+            KEY_DS_BUTTON_START
+        )
+        val dsButtonTitles = listOf(
+            R.string.button_a,
+            R.string.button_b,
+            R.string.button_x,
+            R.string.button_y,
+            R.string.button_l,
+            R.string.button_r,
+            R.string.button_select,
+            R.string.button_start
+        )
+        val dsDpadKeys = listOf(
+            KEY_DS_BUTTON_UP,
+            KEY_DS_BUTTON_DOWN,
+            KEY_DS_BUTTON_LEFT,
+            KEY_DS_BUTTON_RIGHT
+        )
+        val dsDpadTitles = listOf(
+            R.string.direction_up,
+            R.string.direction_down,
+            R.string.direction_left,
+            R.string.direction_right
+        )
+        val dsHotkeys = listOf(KEY_DS_HOTKEY_RETURN_HOME)
+        val dsHotkeyTitles = listOf(R.string.ds_hotkey_return_home)
 
         // TODO: Move these in with the other setting keys in GenerateSettingKeys.cmake
         const val PREF_FIRST_APP_LAUNCH = "FirstApplicationLaunch"
