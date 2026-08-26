@@ -171,12 +171,14 @@ private:
     ANativeWindow* bottom_surface_ = nullptr;
 
     AAudioStream* audio_stream_ = nullptr;
+    int audio_sample_rate_ = 0;
 };
 
 void DsSession::InitAudio(int sample_rate) {
     if (sample_rate <= 0) {
         return;
     }
+    audio_sample_rate_ = sample_rate;
     AAudioStreamBuilder* builder = nullptr;
     if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK || !builder) {
         LOG_ERROR(Frontend, "DS: failed to create AAudio stream builder");
@@ -207,7 +209,22 @@ void DsSession::WriteAudio(const std::vector<int16_t>& samples) {
     // Run()'s loop, and an occasional audio underrun is far less
     // disruptive than stalling the emulation thread waiting for a full
     // AAudio ring buffer to drain.
-    AAudioStream_write(audio_stream_, samples.data(), frames, 0);
+    const aaudio_result_t result =
+        AAudioStream_write(audio_stream_, samples.data(), frames, 0);
+    if (result < 0) {
+        // A negative result here (most commonly AAUDIO_ERROR_DISCONNECTED,
+        // e.g. a Bluetooth/wired route change or another app grabbing the
+        // low-latency MMAP path) means this stream is now permanently
+        // dead -- AAudio streams can't be resumed after disconnecting,
+        // only replaced. Without this, a single disconnect silently and
+        // irrecoverably killed DS audio for the rest of the session even
+        // though nothing else was wrong.
+        LOG_ERROR(Frontend, "DS: AAudio write failed ({}), reopening stream",
+                  AAudio_convertResultToText(result));
+        AAudioStream_close(audio_stream_);
+        audio_stream_ = nullptr;
+        InitAudio(audio_sample_rate_);
+    }
 }
 
 void DsSession::ShutdownAudio() {
