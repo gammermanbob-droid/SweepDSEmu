@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SweepDSEmuNDSBrewer
+GenericName=DS Forwarder Builder
+Comment=Build and manage DS forwarder CIAs for SweepDS Emu
+Icon=org.azahar_emu.Azahar
+TryExec=SweepDSEmuNDSBrewer
+Exec=SweepDSEmuNDSBrewer
+Categories=Game;Emulator;Utility;
+Keywords=3DS;DS;Nintendo;Forwarder;
