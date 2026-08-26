@@ -620,6 +620,19 @@ class DsEmulationActivity : AppCompatActivity() {
     // discrete semantics dsOnButtonEvent expects.
     private var hatDpadState = 0
 
+    // Most gamepads report L2/R2 as continuous analog axes (AXIS_LTRIGGER/
+    // AXIS_RTRIGGER, or AXIS_BRAKE/AXIS_GAS on some controller mappings)
+    // rather than discrete KEYCODE_BUTTON_L2/R2 key events -- unlike L1/R1
+    // (the bumpers), which reliably arrive as key events. dispatchKeyEvent
+    // alone misses these entirely, which is why defaultKeyCodesFor's
+    // KEYCODE_BUTTON_L2/R2 default for DS L/R never fired on most physical
+    // controllers. Synthesize a press/release through the same
+    // keyCodeToDsButton lookup used for real key events (as if
+    // KEYCODE_BUTTON_L2/R2 itself were pressed) so rebinding still behaves
+    // consistently, tracking last-known state the same way hatDpadState
+    // does for the D-pad.
+    private var triggerButtonState = 0
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.source and android.view.InputDevice.SOURCE_JOYSTICK ==
             android.view.InputDevice.SOURCE_JOYSTICK
@@ -643,6 +656,27 @@ class DsEmulationActivity : AppCompatActivity() {
                 if (pressed and bit != 0) NativeLibrary.dsOnButtonEvent(bit, true)
             }
             hatDpadState = newState
+
+            val lTrigger = event.getAxisValue(MotionEvent.AXIS_LTRIGGER)
+                .takeIf { it != 0f } ?: event.getAxisValue(MotionEvent.AXIS_BRAKE)
+            val rTrigger = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
+                .takeIf { it != 0f } ?: event.getAxisValue(MotionEvent.AXIS_GAS)
+
+            var newTriggerState = 0
+            val lBit = keyCodeToDsButton(KeyEvent.KEYCODE_BUTTON_L2)
+            val rBit = keyCodeToDsButton(KeyEvent.KEYCODE_BUTTON_R2)
+            if (lTrigger > 0.5f) newTriggerState = newTriggerState or lBit
+            if (rTrigger > 0.5f) newTriggerState = newTriggerState or rBit
+
+            val triggerReleased = triggerButtonState and newTriggerState.inv()
+            val triggerPressed = newTriggerState and triggerButtonState.inv()
+            for (bit in listOf(lBit, rBit)) {
+                if (bit == 0) continue
+                if (triggerReleased and bit != 0) NativeLibrary.dsOnButtonEvent(bit, false)
+                if (triggerPressed and bit != 0) NativeLibrary.dsOnButtonEvent(bit, true)
+            }
+            triggerButtonState = newTriggerState
+
             return true
         }
         return super.dispatchGenericMotionEvent(event)
