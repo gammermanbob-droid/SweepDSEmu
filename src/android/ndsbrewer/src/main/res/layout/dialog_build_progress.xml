@@ -13,13 +13,11 @@
         android:textSize="16sp"
         android:textColor="?attr/colorOnSurface" />
 
-    <com.google.android.material.progressindicator.LinearProgressIndicator
+    <org.citra.citra_emu.ndsbrewer.MartiniGlassProgressView
         android:id="@+id/progress_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:indeterminate="false"
-        app:trackCornerRadius="4dp" />
+        android:layout_marginTop="16dp" />
 
     <TextView
         android:id="@+id/progress_count"

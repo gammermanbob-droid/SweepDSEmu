@@ -20,7 +20,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -261,7 +260,7 @@ class MainActivity : AppCompatActivity() {
 
         val progressView = layoutInflater.inflate(R.layout.dialog_build_progress, null)
         val progressLabel = progressView.findViewById<android.widget.TextView>(R.id.progress_label)
-        val progressBar = progressView.findViewById<LinearProgressIndicator>(R.id.progress_bar)
+        val progressBar = progressView.findViewById<MartiniGlassProgressView>(R.id.progress_bar)
         val progressCount = progressView.findViewById<android.widget.TextView>(R.id.progress_count)
         progressBar.max = selected.size
         val progressDialog = AlertDialog.Builder(this)
