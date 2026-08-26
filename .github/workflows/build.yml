@@ -287,6 +287,18 @@ jobs:
         with:
           name: ${{ env.OS }}-${{ env.TARGET }}
           path: src/android/app/artifacts/
+      # SweepDSEmuNDSBrewer's own APK -- .ci/android.sh's bare
+      # "assembleRelease" (no :app: prefix) already built this as part
+      # of the same Gradle invocation, since that task name matches on
+      # every subproject that has it, not just :app. Signed with the
+      # same release key as :app when the real secrets are present (see
+      # ndsbrewer/build.gradle.kts), which the install hand-off to :app
+      # requires.
+      - name: Upload NDSBrewer
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ndsbrewer
+          path: src/android/ndsbrewer/build/outputs/apk/release/*.apk
       # Separately named/packaged build for AYN Thor and similar genuine
       # dual-screen handhelds (see the "thor" product flavor in
       # app/build.gradle.kts). Deliberately its own steps rather than

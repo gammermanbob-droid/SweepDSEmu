@@ -50,9 +50,36 @@ android {
         }
     }
 
+    // Must be signed with the exact same key as :app's own release
+    // build: InstallCiaBridgeActivity there is guarded by a
+    // signature-level permission (see AndroidManifest.xml there), so a
+    // differently-signed NDSBrewer release couldn't ever use the
+    // install hand-off against a real release install of the main app.
+    // Same ANDROID_KEYSTORE_FILE/ANDROID_KEY_ALIAS/ANDROID_KEYSTORE_PASS
+    // env vars :app's own signingConfigs.release reads, set up the same
+    // way by .ci/android.sh -- falls back to debug signing when they
+    // aren't present (a from-source/fork build without the real
+    // release secrets), matching :app's own fallback exactly.
+    val keystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+    if (keystoreFile != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASS")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASS")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (keystoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"
