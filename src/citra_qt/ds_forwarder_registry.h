@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QString>
 
 namespace DSForwarderRegistry {
@@ -28,5 +29,34 @@ namespace DSForwarderRegistry {
 // forwarder (the overwhelmingly common case — this is checked on
 // every boot, so it has to be cheap and safe to call unconditionally).
 QString ResolveForwarder(uint64_t program_id);
+
+struct Forwarder {
+    uint64_t program_id;
+    QString rom_path;
+};
+
+// Every registered forwarder, in file order. Used by SweepDSEmuNDSBrewer's
+// "manage existing forwarders" list — unlike ResolveForwarder(), which is
+// on the hot boot-time path, this is only called when that UI is open.
+QList<Forwarder> ListForwarders();
+
+// Registers (or re-registers, replacing any stale entry for the same
+// program_id) a freshly-built forwarder. Mirrors
+// tools/make_ds_forwarder.py's own register_forwarder() so both stay
+// interchangeable against the same registry file.
+void RegisterForwarder(uint64_t program_id, const QString& rom_path);
+
+// Un-registers a forwarder and undoes everything CIA installation did for
+// it: the SD title's own content directory (via
+// Service::AM::GetTitlePath(SDMC, program_id)) and its ticket file under
+// NANDDir/dbs/ticket.db/ (matched by the program_id prefix all ticket
+// filenames start with — the trailing ticket_id half of the filename isn't
+// recorded anywhere else, so a prefix match is how the existing
+// Service::AM ticket-path helpers locate one too), plus the registry line
+// itself. Returns false if program_id wasn't registered; a forwarder whose
+// CIA was never actually installed (built but not installed, or installed
+// then already removed some other way) still has its registry line
+// dropped either way, since that's this function's one unconditional job.
+bool RemoveForwarder(uint64_t program_id);
 
 } // namespace DSForwarderRegistry

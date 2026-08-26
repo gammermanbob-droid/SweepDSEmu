@@ -465,6 +465,7 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     hw/aes/ccm.h
     hw/aes/key.cpp
     hw/aes/key.h
+    hw/ds_forwarder_stub.h
     hw/ecc.cpp
     hw/ecc.h
     hw/rsa/rsa.cpp

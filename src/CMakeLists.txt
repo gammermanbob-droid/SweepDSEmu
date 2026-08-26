@@ -207,6 +207,14 @@ if (ENABLE_QT) # Or any other hypothetical future frontends
     add_subdirectory(citra_meta)
 endif()
 
+if (ENABLE_QT AND NOT IOS)
+    # A desktop-only companion tool (shells out to bundled bannertool/
+    # makerom via QProcess, which iOS's app sandbox doesn't allow) --
+    # excluded there the same way Android already is by ENABLE_QT itself
+    # being off for that build.
+    add_subdirectory(ndsbrewer_meta)
+endif()
+
 if (ENABLE_LIBRETRO)
     add_subdirectory(citra_libretro)
 endif()
