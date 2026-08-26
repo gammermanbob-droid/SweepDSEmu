@@ -95,8 +95,27 @@ android {
     }
 
     val keystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
-    if (keystoreFile != null) {
-        signingConfigs {
+    signingConfigs {
+        // Checked-in debug key (src/android/ci-debug.keystore) shared by :app
+        // and :ndsbrewer, used whenever the real ANDROID_KEYSTORE_* release
+        // secrets aren't present. Without this, AGP falls back to its
+        // *implicit* per-machine ~/.android/debug.keystore, which is
+        // auto-generated with a random key the first time it's needed --
+        // meaning every fresh GitHub Actions runner (a new VM each run) gets
+        // its own random debug signature, so two "release" builds of :app
+        // and :ndsbrewer built in different CI runs end up signed
+        // differently even though both fall back to "debug" signing. That
+        // breaks InstallCiaBridgeActivity's signature-level permission
+        // check between the two apps. Pinning both modules to this one
+        // checked-in key keeps every build -- any machine, any CI run --
+        // signed identically.
+        getByName("debug") {
+            storeFile = rootProject.file("ci-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        if (keystoreFile != null) {
             create("release") {
                 storeFile = file(keystoreFile)
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASS")

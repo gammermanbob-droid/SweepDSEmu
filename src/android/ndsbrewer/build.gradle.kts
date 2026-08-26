@@ -61,8 +61,20 @@ android {
     // aren't present (a from-source/fork build without the real
     // release secrets), matching :app's own fallback exactly.
     val keystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
-    if (keystoreFile != null) {
-        signingConfigs {
+    signingConfigs {
+        // Same checked-in debug key :app uses (src/android/ci-debug.keystore)
+        // -- see the matching comment there. Without this override, this
+        // module's debug-signing fallback used AGP's implicit, per-machine
+        // ~/.android/debug.keystore, which is why a real device ended up
+        // with :app and :ndsbrewer signed by two different random debug
+        // keys depending on which CI run built which artifact.
+        getByName("debug") {
+            storeFile = rootProject.file("ci-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        if (keystoreFile != null) {
             create("release") {
                 storeFile = file(keystoreFile)
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASS")
