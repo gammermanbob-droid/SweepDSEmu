@@ -143,6 +143,23 @@ if (BUNDLE_TARGET_EXECUTE)
             message(FATAL_ERROR "linuxdeploy failed to create AppDir w/ exit code ${linuxdeploy_appdir_result}:\n${linuxdeploy_appdir_error}")
         endif()
 
+        # ndsbrewer_meta ships bannertool/makerom next to its own executable
+        # (see its CMakeLists.txt and NDSBrewerWindow::ForwarderToolsDir());
+        # on Linux that executable ends up wrapped into its own AppImage
+        # here, so the helper binaries have to be injected into this AppDir
+        # (linuxdeploy places --executable at usr/bin/<name>) before
+        # packaging, rather than merely sitting next to the .AppImage file on
+        # disk -- the latter wouldn't be visible at the mounted runtime path
+        # applicationDirPath() resolves to. No-op for any other executable.
+        set(ds_forwarder_tools_src "${source_path}/externals/ds_forwarder_tools/linux")
+        if (executable_name STREQUAL "SweepDSEmuNDSBrewer" AND EXISTS "${ds_forwarder_tools_src}")
+            file(MAKE_DIRECTORY "${appdir_path}/usr/bin/ds_forwarder_tools")
+            file(COPY_FILE "${source_path}/externals/ds_forwarder_tools/shared/template.rsf"
+                "${appdir_path}/usr/bin/ds_forwarder_tools/template.rsf")
+            execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${ds_forwarder_tools_src}" "${appdir_path}/usr/bin/ds_forwarder_tools")
+        endif()
+
         message(STATUS "Creating AppImage for executable ${executable_path}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E env
             "OUTPUT=${bundle_dir}/${executable_name}.AppImage"
@@ -281,6 +298,36 @@ else()
             TARGET bundle
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/dist/scripting" "${CMAKE_BINARY_DIR}/bundle/scripting"
             POST_BUILD)
+
+        # ndsbrewer_meta's bannertool/makerom helpers (see its CMakeLists.txt)
+        # only get copied next to the *raw* build output by its own
+        # POST_BUILD step -- fine for local dev, but on Windows the step
+        # below (bundle_target_internal's plain file(COPY ${EXECUTABLE_PATH}
+        # ...)) repackages just the bare .exe, so any sibling files placed
+        # next to it during the raw build never reach the shipped bundle.
+        # Copy the platform binaries into bundle/ directly instead, matching
+        # the same "next to the executable" layout
+        # NDSBrewerWindow::ForwarderToolsDir() already expects there. (Not
+        # needed on Apple: the whole .app bundle -- including
+        # Contents/Resources/ds_forwarder_tools -- gets copied there as one
+        # unit. Linux is handled separately, inside bundle_appimage() below,
+        # since each executable there gets wrapped into its own AppImage
+        # rather than landing in this shared top-level directory.)
+        if (WIN32)
+            set(NDS_FORWARDER_TOOLS_BUNDLE_SRC "${CMAKE_SOURCE_DIR}/externals/ds_forwarder_tools/windows")
+            if (EXISTS "${NDS_FORWARDER_TOOLS_BUNDLE_SRC}")
+                add_custom_command(
+                    TARGET bundle
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bundle/ds_forwarder_tools"
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${NDS_FORWARDER_TOOLS_BUNDLE_SRC}"
+                        "${CMAKE_BINARY_DIR}/bundle/ds_forwarder_tools"
+                    COMMAND ${CMAKE_COMMAND} -E copy
+                        "${CMAKE_SOURCE_DIR}/externals/ds_forwarder_tools/shared/template.rsf"
+                        "${CMAKE_BINARY_DIR}/bundle/ds_forwarder_tools/template.rsf"
+                    POST_BUILD)
+            endif()
+        endif()
 
         # On Linux, add a command to prepare linuxdeploy and any required plugins before any bundling occurs.
         if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
