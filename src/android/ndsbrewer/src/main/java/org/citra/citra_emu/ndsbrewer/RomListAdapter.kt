@@ -11,8 +11,10 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-class RomListAdapter(private val roms: List<NdsRom>) :
-    RecyclerView.Adapter<RomListAdapter.ViewHolder>() {
+class RomListAdapter(
+    private val roms: List<NdsRom>,
+    private val onCheckedChanged: () -> Unit = {}
+) : RecyclerView.Adapter<RomListAdapter.ViewHolder>() {
 
     val checkedStates = BooleanArray(roms.size)
 
@@ -33,7 +35,10 @@ class RomListAdapter(private val roms: List<NdsRom>) :
         holder.icon.setImageBitmap(rom.icon)
         holder.checkbox.setOnCheckedChangeListener(null)
         holder.checkbox.isChecked = checkedStates[position]
-        holder.checkbox.setOnCheckedChangeListener { _, checked -> checkedStates[position] = checked }
+        holder.checkbox.setOnCheckedChangeListener { _, checked ->
+            checkedStates[position] = checked
+            onCheckedChanged()
+        }
         holder.itemView.setOnClickListener { holder.checkbox.toggle() }
     }
 

@@ -61,4 +61,21 @@ object PathUtil {
         val root = DocumentFile.fromTreeUri(context, uri) ?: return false
         return root.exists() && root.isDirectory
     }
+
+    /**
+     * True only when [uri] is a validly-parseable tree URI that's
+     * specifically on a *removable* volume (an SD card) rather than
+     * primary storage -- lets MainActivity tell that apart from a
+     * generically broken/unreadable pick, since it's the one case with an
+     * actual explanation (see this file's class doc) worth surfacing
+     * instead of a plain "couldn't be opened".
+     */
+    fun isOnRemovableStorage(uri: Uri): Boolean {
+        val docId = try {
+            android.provider.DocumentsContract.getTreeDocumentId(uri)
+        } catch (e: Exception) {
+            return false
+        }
+        return !docId.startsWith("primary:")
+    }
 }

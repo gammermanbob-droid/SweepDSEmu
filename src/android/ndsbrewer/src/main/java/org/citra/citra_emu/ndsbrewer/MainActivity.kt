@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -41,7 +42,12 @@ class MainActivity : AppCompatActivity() {
         )
         PathUtil.setProfileDirectoryUri(this, uri)
         if (PathUtil.getProfileDirectoryPath(this) == null) {
-            Toast.makeText(this, R.string.ndsbrewer_directory_invalid, Toast.LENGTH_LONG).show()
+            val messageRes = if (PathUtil.isOnRemovableStorage(uri)) {
+                R.string.ndsbrewer_directory_removable_storage
+            } else {
+                R.string.ndsbrewer_directory_invalid
+            }
+            Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
             promptForDirectory()
         } else {
             refreshAll()
@@ -145,12 +151,29 @@ class MainActivity : AppCompatActivity() {
     private fun refreshRomList() {
         val profileDir = PathUtil.getProfileDirectoryPath(this) ?: return
         val roms = NdsRom.scan(profileDir)
-        romAdapter = RomListAdapter(roms)
+        romAdapter = RomListAdapter(roms) { syncSelectAllCheckbox() }
         romListView.adapter = romAdapter
         selectAllCheckbox.isChecked = false
         if (roms.isEmpty()) {
             Toast.makeText(this, R.string.ndsbrewer_no_roms_found, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Keeps the "Select All" checkbox reflecting reality after the user
+     * checks/unchecks individual ROMs by hand -- e.g. ticking the last
+     * remaining unchecked ROM should tick "Select All" too, and
+     * unticking any one ROM should untick it. Toggling the listener off
+     * for this one programmatic update avoids feeding back into
+     * RomListAdapter.setAllChecked, which would just needlessly redo
+     * work this same click already did.
+     */
+    private fun syncSelectAllCheckbox() {
+        val adapter = romAdapter ?: return
+        val allChecked = adapter.itemCount > 0 && adapter.checkedStates.all { it }
+        selectAllCheckbox.setOnCheckedChangeListener(null)
+        selectAllCheckbox.isChecked = allChecked
+        selectAllCheckbox.setOnCheckedChangeListener { _, checked -> romAdapter?.setAllChecked(checked) }
     }
 
     private fun refreshForwarderList() {
@@ -185,18 +208,32 @@ class MainActivity : AppCompatActivity() {
         val installAfterBuild = installAfterBuildCheckbox.isChecked
         buildButton.isEnabled = false
 
+        val progressView = layoutInflater.inflate(R.layout.dialog_build_progress, null)
+        val progressLabel = progressView.findViewById<android.widget.TextView>(R.id.progress_label)
+        val progressBar = progressView.findViewById<LinearProgressIndicator>(R.id.progress_bar)
+        val progressCount = progressView.findViewById<android.widget.TextView>(R.id.progress_count)
+        progressBar.max = selected.size
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ndsbrewer_build_button)
+            .setView(progressView)
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
         Thread {
             var successCount = 0
             val failures = mutableListOf<String>()
             val builtCias = mutableListOf<String>()
 
-            for (rom in selected) {
+            selected.forEachIndexed { index, rom ->
                 runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        getString(R.string.ndsbrewer_building, rom.name),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    progressLabel.text = getString(R.string.ndsbrewer_building, rom.name)
+                    progressCount.text = getString(
+                        R.string.ndsbrewer_build_progress_count,
+                        index + 1,
+                        selected.size
+                    )
+                    progressBar.progress = index
                 }
                 var error: String? = null
                 val ciaPath = ForwarderBuilder.build(this, profileDir, rom.absolutePath) { error = it }
@@ -206,11 +243,15 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     failures.add(getString(R.string.ndsbrewer_build_failed, rom.name, error ?: "unknown error"))
                 }
+                runOnUiThread { progressBar.progress = index + 1 }
             }
 
             var notInstalledCount = 0
             var permissionDeniedCount = 0
-            if (installAfterBuild) {
+            if (installAfterBuild && builtCias.isNotEmpty()) {
+                runOnUiThread {
+                    progressLabel.text = getString(R.string.ndsbrewer_installing)
+                }
                 for (ciaPath in builtCias) {
                     when (InstallBridge.installCia(this, ciaPath)) {
                         InstallBridge.Result.LAUNCHED -> {
@@ -232,6 +273,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             runOnUiThread {
+                progressDialog.dismiss()
                 buildButton.isEnabled = true
                 if (notInstalledCount > 0) {
                     Toast.makeText(this, R.string.ndsbrewer_install_not_installed, Toast.LENGTH_LONG).show()
