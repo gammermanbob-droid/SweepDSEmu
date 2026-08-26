@@ -5,6 +5,8 @@
 package org.citra.citra_emu.ndsbrewer
 
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +30,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var installAfterBuildCheckbox: CheckBox
     private lateinit var buildButton: MaterialButton
     private var romAdapter: RomListAdapter? = null
+
+    // Quiet, looping menu music for this screen (see README.md's Credits
+    // section for attribution). Looked up by resource name at runtime
+    // rather than a compile-time R.raw.menu_music reference so a
+    // from-source build missing this one optional asset just silently
+    // skips the music instead of failing to compile.
+    private var menuMusicPlayer: MediaPlayer? = null
+
+    companion object {
+        private const val MENU_MUSIC_VOLUME = 0.25f
+    }
 
     private val pickDirectory = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -85,6 +98,44 @@ class MainActivity : AppCompatActivity() {
         // keep the "manage" list honest.
         if (PathUtil.getProfileDirectoryPath(this) != null) {
             refreshForwarderList()
+        }
+        startMenuMusic()
+    }
+
+    override fun onPause() {
+        // Pause rather than release/stop -- this Activity backgrounds
+        // constantly for the directory picker, the storage-permission
+        // Settings screen, and the install hand-off to the main app, all
+        // of which return right back here rather than finishing it.
+        menuMusicPlayer?.let { if (it.isPlaying) it.pause() }
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        menuMusicPlayer?.release()
+        menuMusicPlayer = null
+        super.onDestroy()
+    }
+
+    private fun startMenuMusic() {
+        if (menuMusicPlayer != null) {
+            menuMusicPlayer?.start()
+            return
+        }
+        val resId = resources.getIdentifier("menu_music", "raw", packageName)
+        if (resId == 0) {
+            return
+        }
+        menuMusicPlayer = MediaPlayer.create(this, resId)?.apply {
+            isLooping = true
+            setVolume(MENU_MUSIC_VOLUME, MENU_MUSIC_VOLUME)
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            start()
         }
     }
 

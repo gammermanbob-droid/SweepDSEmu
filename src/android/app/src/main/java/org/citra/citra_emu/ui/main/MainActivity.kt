@@ -8,8 +8,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -86,48 +84,8 @@ class MainActivity :
 
     override var themeId: Int = 0
 
-    // Quiet, looping menu music for this (game list/home) screen only
-    // (see README.md's Credits section for attribution). Looked up by
-    // name at runtime rather than a compile-time R.raw.menu_music
-    // reference so a from-source build missing this one optional asset
-    // (for whatever reason) just silently skips the music instead of
-    // failing to compile.
-    private var menuMusicPlayer: MediaPlayer? = null
-
     companion object {
         const val KEY_SETUP_CURRENT_PAGE = "SetupCurrentPage"
-        private const val MENU_MUSIC_VOLUME = 0.25f
-    }
-
-    private fun startMenuMusic() {
-        if (menuMusicPlayer != null) {
-            menuMusicPlayer?.start()
-            return
-        }
-        val resId = resources.getIdentifier("menu_music", "raw", packageName)
-        if (resId == 0) {
-            return
-        }
-        menuMusicPlayer = MediaPlayer.create(this, resId)?.apply {
-            isLooping = true
-            setVolume(MENU_MUSIC_VOLUME, MENU_MUSIC_VOLUME)
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            start()
-        }
-    }
-
-    private fun pauseMenuMusic() {
-        menuMusicPlayer?.let { if (it.isPlaying) it.pause() }
-    }
-
-    private fun releaseMenuMusic() {
-        menuMusicPlayer?.release()
-        menuMusicPlayer = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -258,22 +216,11 @@ class MainActivity :
         checkUserPermissions()
 
         ThemeUtil.setCorrectTheme(this)
-        startMenuMusic()
         super.onResume()
-    }
-
-    override fun onPause() {
-        // Menu music only, not gameplay music -- pause it the moment this
-        // screen isn't the one on top (e.g. launching into emulation),
-        // rather than letting it keep playing underneath/alongside a
-        // running game.
-        pauseMenuMusic()
-        super.onPause()
     }
 
     override fun onDestroy() {
         NetPlayDialog.stopWifiDirect()
-        releaseMenuMusic()
         super.onDestroy()
     }
 
