@@ -523,7 +523,15 @@ public:
     bool GetStatus() const override {
         if (port >= 0 && joysticks && static_cast<int>(joysticks->size()) > port &&
             joysticks->at(port)) {
-            return joysticks->at(port)->GetAxis(axis, isController);
+            // Must apply the same threshold/direction test as the
+            // fallback loop below -- returning the raw axis float here
+            // (implicitly cast to bool) reports "pressed" for any
+            // nonzero position regardless of direction or threshold,
+            // so e.g. an analog-stick-as-D-pad binding's opposing
+            // left/right buttons (same axis, opposite direction) both
+            // read "pressed" together and cancel out to no movement.
+            const float axis_value = joysticks->at(port)->GetAxis(axis, isController);
+            return trigger_if_greater ? axis_value > threshold : axis_value < threshold;
         }
         for (const auto& joystick : *joysticks) {
             if (!joystick)
@@ -1091,9 +1099,24 @@ public:
                 break;
             }
             case SDL_JOYHATMOTION: {
-                return SDLEventToButtonParamPackage(state, event,
-                                                    event.jhat.value != SDL_HAT_CENTERED);
-                break;
+                if (event.jhat.value != SDL_HAT_CENTERED) {
+                    hat_memory[id][event.jhat.hat] = event.jhat.value;
+                    return SDLEventToButtonParamPackage(state, event, true);
+                }
+                // The hat returned to center -- callers wait for this
+                // "up" event (see configure_input.cpp/configure_ds_controls.cpp's
+                // "skip button downs, only process button ups" polling
+                // loop), but SDL's own centered event carries no
+                // direction, only "centered". Serializing that verbatim
+                // would bind "hat idle" as the trigger condition instead
+                // of the direction the user actually pressed -- inverted
+                // from what's wanted (held whenever idle, released while
+                // pressing). Reuse the last non-centered value seen for
+                // this hat so the accepted binding still encodes the
+                // real direction.
+                SDL_Event release_event = event;
+                release_event.jhat.value = hat_memory[id][event.jhat.hat];
+                return SDLEventToButtonParamPackage(state, release_event, false);
             }
             }
         }
@@ -1120,6 +1143,9 @@ private:
     std::unordered_map<SDL_JoystickID, std::unordered_map<uint8_t, int16_t>> axis_memory;
     std::unordered_map<SDL_JoystickID, std::unordered_map<uint8_t, uint32_t>> axis_event_count;
     std::unordered_map<SDL_JoystickID, std::unordered_map<uint8_t, bool>> axis_skip;
+    // Last non-centered SDL_HAT_* value seen per (joystick, hat) -- see
+    // the SDL_JOYHATMOTION case above for why this is needed.
+    std::unordered_map<SDL_JoystickID, std::unordered_map<uint8_t, Uint8>> hat_memory;
     int buttonDownTimestamp = 0;
     std::unordered_map<SDL_JoystickID, std::unordered_map<uint8_t, int>> axisStartTimestamps;
 };
