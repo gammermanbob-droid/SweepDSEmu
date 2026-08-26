@@ -43,6 +43,15 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
+    <!-- Lets SweepDSEmuNDSBrewer (a separate, same-signature-only APK,
+         see InstallCiaBridgeActivity) hand off a freshly built forwarder
+         .cia for installation here, reusing the exact same CiaInstallWorker
+         path the in-app "Install CIA" picker already uses. Signature-level
+         so only an app signed with this same key can trigger it. -->
+    <permission
+        android:name="org.citra.citra_emu.permission.INSTALL_CIA_BRIDGE"
+        android:protectionLevel="signature" />
+
     <application
         android:name="org.citra.citra_emu.CitraApplication"
         android:label="@string/app_name"
@@ -68,6 +77,14 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="org.citra.citra_emu.utils.InstallCiaBridgeActivity"
+            android:exported="true"
+            android:permission="org.citra.citra_emu.permission.INSTALL_CIA_BRIDGE"
+            android:theme="@style/Theme.Citra.Invisible"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance" />
 
         <activity
             android:name="org.citra.citra_emu.features.settings.ui.SettingsActivity"

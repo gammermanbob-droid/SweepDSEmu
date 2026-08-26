@@ -656,6 +656,7 @@
     <string name="system_archive_not_found">System Archive Not Found</string>
     <string name="system_archive_not_found_message">%s is missing. Please dump your system archives.\nContinuing emulation may result in crashes and bugs.</string>
     <string name="cia_file_not_found">Installation Failed. CIA file not found.</string>
+    <string name="ndsbrewer_install_unsupported_google_play">Installing forwarders built by SweepDSEmuNDSBrewer isn\'t supported on this build. Use the non-Google Play build of SweepDSEmu instead.</string>
     <string name="zippass_file_not_found">Import Failed. ZipPass file not found.</string>
     <string name="zippass_import_successful">Import successful.</string>
     <string name="zippass_import_failed">Import failed.</string>

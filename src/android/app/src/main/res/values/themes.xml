@@ -7,6 +7,18 @@
         <item name="postSplashScreenTheme">@style/Theme.Citra.Blue</item>
     </style>
 
+    <!-- For InstallCiaBridgeActivity: needs an AppCompat-derived theme
+         (plain android:style/Theme.NoDisplay isn't compatible with
+         AppCompatActivity), but should still show nothing on screen. -->
+    <style name="Theme.Citra.Invisible" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
     <style name="Theme.Citra" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Common theme colors -->
         <item name="colorError">@color/citra_error</item>
