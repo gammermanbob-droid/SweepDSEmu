@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 
 #include "common/file_util.h"
@@ -14,13 +15,50 @@ namespace DSForwarderRegistry {
 
 namespace {
 
-// One line per forwarder: "<16 lowercase hex program_id>=<absolute DS
-// ROM path>". Written by tools/make_ds_forwarder.py, one line appended
+// One line per forwarder: "<16 lowercase hex program_id>=<DS ROM path,
+// relative to UserDir when the ROM lives inside it, absolute
+// otherwise>". Written by tools/make_ds_forwarder.py, one line appended
 // per forwarder generated — plain text rather than JSON so this side
 // doesn't need a JSON dependency just to read a flat key/value map.
+//
+// Storing a UserDir-relative path (rather than always absolute) is
+// what makes a forwarder built on one machine/profile still resolve
+// correctly once that whole profile directory is copied elsewhere —
+// e.g. the desktop-built profile tree that gets copied onto an Android
+// device's storage: ROMs there always live at the same path relative
+// to UserDir regardless of platform (sdmc/roms/nds/...), even though
+// UserDir's own absolute location differs completely between a Mac
+// and an Android device. A ROM path outside UserDir entirely (rare,
+// but possible if someone points the builder at an arbitrary folder)
+// still falls back to an absolute path, which is the best that can be
+// done for it.
+QString UserDir() {
+    return QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::UserDir));
+}
+
 QString RegistryPath() {
-    return QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) +
-           QStringLiteral("ds_forwarders.txt");
+    return UserDir() + QStringLiteral("ds_forwarders.txt");
+}
+
+// Converts an absolute rom_path into the form that should be written to
+// the registry: relative to UserDir if rom_path is inside it, else left
+// absolute.
+QString ToStoredPath(const QString& rom_path) {
+    const QDir user_dir(UserDir());
+    const QString relative = user_dir.relativeFilePath(rom_path);
+    if (relative.startsWith(QStringLiteral(".."))) {
+        return rom_path;
+    }
+    return relative;
+}
+
+// Inverse of ToStoredPath: resolves a registry value (relative or
+// absolute) back into a path usable directly by the loader.
+QString FromStoredPath(const QString& stored) {
+    if (QFileInfo(stored).isAbsolute()) {
+        return stored;
+    }
+    return QDir::cleanPath(UserDir() + QLatin1Char('/') + stored);
 }
 
 // Same directory Service::AM's own (file-local) GetTicketPath() builds
@@ -50,7 +88,7 @@ QString ResolveForwarder(uint64_t program_id) {
     while (!stream.atEnd()) {
         const QString line = stream.readLine();
         if (line.startsWith(needle, Qt::CaseInsensitive)) {
-            return line.mid(needle.length()).trimmed();
+            return FromStoredPath(line.mid(needle.length()).trimmed());
         }
     }
 
@@ -77,7 +115,7 @@ QList<Forwarder> ListForwarders() {
         if (!ok) {
             continue;
         }
-        forwarders.append(Forwarder{program_id, line.mid(equals + 1)});
+        forwarders.append(Forwarder{program_id, FromStoredPath(line.mid(equals + 1))});
     }
 
     return forwarders;
@@ -98,7 +136,7 @@ void RegisterForwarder(uint64_t program_id, const QString& rom_path) {
         }
         file.close();
     }
-    lines.append(needle + rom_path);
+    lines.append(needle + ToStoredPath(rom_path));
 
     if (file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
         QTextStream out(&file);

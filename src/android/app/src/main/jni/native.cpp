@@ -187,8 +187,19 @@ static bool CheckMicPermission() {
 // same flat "<16 lowercase hex title_id>=<DS ROM path>" file format written
 // by tools/make_ds_forwarder.py, just read with plain std::ifstream instead
 // of QFile/QTextStream since this file has no Qt dependency to spare.
+//
+// The stored path is relative to UserDir when the ROM lives inside it
+// (ds_forwarder_registry.cpp's ToStoredPath), which is what lets a
+// forwarder built by the desktop tool still resolve correctly once its
+// whole profile directory is copied onto an Android device -- UserDir's
+// absolute location differs completely between platforms, but ROMs are
+// always at the same UserDir-relative path (sdmc/roms/nds/...) on both.
+// An absolute stored path (either a pre-existing registry entry from
+// before this became relative, or a ROM that genuinely lives outside
+// UserDir) is used as-is.
 static std::string ResolveAndroidDSForwarder(u64 title_id) {
-    const std::string path = FileUtil::GetUserPath(FileUtil::UserPath::UserDir) + "ds_forwarders.txt";
+    const std::string user_dir = FileUtil::GetUserPath(FileUtil::UserPath::UserDir);
+    const std::string path = user_dir + "ds_forwarders.txt";
     std::ifstream file(path);
     if (!file.is_open()) {
         return {}; // No forwarders registered yet -- the common case.
@@ -203,6 +214,9 @@ static std::string ResolveAndroidDSForwarder(u64 title_id) {
             std::string result = line.substr(17);
             while (!result.empty() && (result.back() == '\r' || result.back() == '\n')) {
                 result.pop_back();
+            }
+            if (!result.empty() && result.front() != '/') {
+                result = user_dir + result;
             }
             return result;
         }

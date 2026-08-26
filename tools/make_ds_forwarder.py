@@ -278,7 +278,21 @@ def build_cia(work_dir, makerom, rsf_template, elf, smdh, banner, title,
 
 def register_forwarder(user_dir, program_id_hex, rom_path, log):
     registry_path = os.path.join(user_dir, "ds_forwarders.txt")
-    line = f"{program_id_hex}={os.path.abspath(rom_path)}\n"
+    # Relative to user_dir when the ROM lives inside it, so this same
+    # registry line still resolves correctly once the whole profile
+    # directory is copied to another machine/platform (e.g. a desktop
+    # profile copied onto an Android device) -- see
+    # src/citra_qt/ds_forwarder_registry.cpp's ToStoredPath/FromStoredPath
+    # for the C++ side of this same convention.
+    absolute_rom_path = os.path.abspath(rom_path)
+    absolute_user_dir = os.path.abspath(user_dir)
+    try:
+        stored_path = os.path.relpath(absolute_rom_path, absolute_user_dir)
+    except ValueError:
+        stored_path = absolute_rom_path  # Different drives on Windows.
+    if stored_path.startswith(".."):
+        stored_path = absolute_rom_path
+    line = f"{program_id_hex}={stored_path}\n"
 
     existing = ""
     if os.path.isfile(registry_path):
