@@ -20,6 +20,7 @@
 
 #include <core/hle/service/cfg/cfg.h>
 #include "audio_core/dsp_interface.h"
+#include "common/android_utils.h"
 #include "common/arch.h"
 
 #if CITRA_ARCH(arm64)
@@ -188,6 +189,20 @@ static bool CheckMicPermission() {
 // by tools/make_ds_forwarder.py, just read with plain std::ifstream instead
 // of QFile/QTextStream since this file has no Qt dependency to spare.
 //
+// FileUtil::GetUserPath(UserDir) is just "/" on Android -- a logical
+// placeholder, not a real filesystem location (see SetUserPath's Android
+// branch in file_util.cpp) -- and plain std::ifstream doesn't go through
+// the AndroidUtils::TranslateFilePath step every other Android file access
+// in this codebase uses to turn that into the user's real, SAF-selected
+// directory (see e.g. FileUtil::IOFile::Open's own TranslateFilePath call).
+// Without it, opening "/ds_forwarders.txt" directly always fails, so the
+// registry looked empty on every real device regardless of what paths were
+// stored inside it. Only the registry file's own path needs translating
+// here, not the DS ROM path returned below: that value is handed to
+// ds_native.cpp's Run(), which already calls TranslateFilePath on it once
+// itself -- translating it twice here would double up the real directory
+// prefix and break it again.
+//
 // The stored path is relative to UserDir when the ROM lives inside it
 // (ds_forwarder_registry.cpp's ToStoredPath), which is what lets a
 // forwarder built by the desktop tool still resolve correctly once its
@@ -199,7 +214,7 @@ static bool CheckMicPermission() {
 // UserDir) is used as-is.
 static std::string ResolveAndroidDSForwarder(u64 title_id) {
     const std::string user_dir = FileUtil::GetUserPath(FileUtil::UserPath::UserDir);
-    const std::string path = user_dir + "ds_forwarders.txt";
+    const std::string path = AndroidUtils::TranslateFilePath(user_dir + "ds_forwarders.txt");
     std::ifstream file(path);
     if (!file.is_open()) {
         return {}; // No forwarders registered yet -- the common case.
