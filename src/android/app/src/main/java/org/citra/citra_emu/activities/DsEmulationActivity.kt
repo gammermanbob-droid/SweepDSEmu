@@ -91,11 +91,12 @@ class DsEmulationActivity : AppCompatActivity() {
         binding = ActivityDsEmulationBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Empty is a legitimate value here, not a caller mistake: it's
+        // MelonDSCore::Load's own convention for "boot straight to the DSi
+        // Menu, no cart" (see its boot_to_menu and HomeSettingsFragment's
+        // "Boot DSi Menu" entry, the only other place that launches this
+        // Activity with EXTRA_DS_ROM_PATH deliberately left unset).
         romPath = intent.getStringExtra(EXTRA_DS_ROM_PATH) ?: ""
-        if (romPath.isEmpty()) {
-            finish()
-            return
-        }
 
         NativeLibrary.sDsEmulationActivity = java.lang.ref.WeakReference(this)
 
@@ -276,9 +277,21 @@ class DsEmulationActivity : AppCompatActivity() {
 
     /** Called from [NativeLibrary.exitDsEmulationActivity] on load failure. */
     fun showLoadError(resultCode: Int) {
+        // An empty romPath only ever means "boot the DSi Menu directly"
+        // (see MelonDSCore::Load's boot_to_menu) -- its only failure mode
+        // is missing real DSi system files, so give that specific reason
+        // instead of a generic "failed to load DS ROM" that doesn't apply
+        // (there was never a ROM here to fail loading in the first place).
+        val message = if (romPath.isEmpty()) {
+            "Booting the DSi Menu requires real DSi system files " +
+                "(bios9.bin, bios7.bin, firmware.bin, dsi_bios9.bin, dsi_bios7.bin, " +
+                "dsi_firmware.bin, dsi_nand.bin in sdmc/bios/) -- see STARTUP_GUIDE.txt."
+        } else {
+            "Failed to load DS ROM (status $resultCode)"
+        }
         AlertDialog.Builder(this)
             .setTitle("SweepDS Emu")
-            .setMessage("Failed to load DS ROM (status $resultCode)")
+            .setMessage(message)
             .setPositiveButton(android.R.string.ok) { _, _ -> finish() }
             .setCancelable(false)
             .show()
@@ -684,6 +697,11 @@ class DsEmulationActivity : AppCompatActivity() {
     }
 
     private fun gameTitleFromRomPath(): String {
+        // Empty romPath means "boot straight to the DSi Menu, no cart" --
+        // see MelonDSCore::Load's boot_to_menu.
+        if (romPath.isEmpty()) {
+            return "DSi Menu"
+        }
         val base = romPath.substringAfterLast('/')
         return base.substringBeforeLast('.').ifEmpty { base }
     }

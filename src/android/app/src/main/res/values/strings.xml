@@ -524,6 +524,8 @@
     <string name="emulation_show_fps">Show FPS</string>
     <string name="emulation_haptic_feedback">Haptic Feedback</string>
     <string name="emulation_overlay_options">Overlay Options</string>
+    <string name="boot_dsi_menu">Boot DSi Menu</string>
+    <string name="boot_dsi_menu_description">Boot straight into the DSi system menu, no game inserted -- lets you browse and launch NAND-installed DSiWare titles directly. Requires real DSi system files (see STARTUP_GUIDE.txt).</string>
     <string name="ds_controls_title">DS Controls</string>
     <string name="ds_reset_game">Reset Game</string>
     <string name="ds_reset_confirm_title">Reset Game?</string>

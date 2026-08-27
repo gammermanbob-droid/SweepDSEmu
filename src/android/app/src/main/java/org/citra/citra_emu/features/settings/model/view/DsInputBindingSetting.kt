@@ -54,6 +54,24 @@ class DsInputBindingSetting(val key: String, titleId: Int) :
             .apply()
     }
 
+    /**
+     * Most gamepads report L2/R2 as continuous analog axes rather than
+     * discrete key events (see DsEmulationActivity.dispatchGenericMotionEvent's
+     * own doc comment), so they never reach [onKeyInput] at all -- this
+     * dialog's key-only capture would otherwise just sit there forever
+     * waiting for a key event that never comes. Store the same synthetic
+     * KEYCODE_BUTTON_L2/R2 that runtime axis handling already checks for
+     * (via keyCodeToDsButton), so a trigger-axis binding actually takes
+     * effect through the exact same int-keycode preference [onKeyInput]
+     * itself writes -- no separate axis-binding storage format needed.
+     */
+    fun onAxisTriggerInput(keyCode: Int, deviceName: String) {
+        preferences.edit()
+            .putInt(key, keyCode)
+            .putString(displayKey, "$deviceName: ${InputBindingSetting.getButtonName(keyCode)}")
+            .apply()
+    }
+
     fun clear() {
         preferences.edit().remove(key).remove(displayKey).apply()
     }

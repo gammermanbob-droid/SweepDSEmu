@@ -196,7 +196,13 @@ void DSEmuThread::run() {
 
 DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(QStringLiteral("SweepDS Emu | %1").arg(QFileInfo(rom_path).fileName()));
+    // Empty rom_path is MelonDSCore::Load's "boot straight to the DSi
+    // Menu, no cart" convention (see CoreFactory::Detect's own doc
+    // comment on the same thing) -- QFileInfo("").fileName() is just an
+    // empty string, so name the window sensibly instead of "SweepDS Emu | ".
+    const QString display_name =
+        rom_path.isEmpty() ? QStringLiteral("DSi Menu") : QFileInfo(rom_path).fileName();
+    setWindowTitle(QStringLiteral("SweepDS Emu | %1").arg(display_name));
     resize(kScreenWidth * 2, kScreenHeight * 2 * 2);
     setFocusPolicy(Qt::StrongFocus);
 

@@ -286,6 +286,26 @@ fs::path BuildHomebrewSDCardRoot() {
     // loop below the same way "roms" and "Nintendo 3DS" are, since it's
     // now nested inside the very tree that loop walks.
     const fs::path root = sdmc / "nds_sdcard_root";
+
+    // Now that real DSi system files make Load() construct a genuine
+    // melonDS::DSi for every DS boot (not just homebrew ones -- a real
+    // DSi's SD card is a system-level resource, live regardless of what
+    // cart is inserted), this function runs on every single DS game
+    // load, retail carts included. The mirror sync below is idempotent
+    // -- re-running it against an already-up-to-date tree just repeats
+    // the same stat() calls with nothing to actually copy -- but each of
+    // those stat() calls still pays Android's FUSE-mediated scoped-
+    // storage round-trip cost, and a homebrew library with a large media
+    // collection (MoonShell2 movies, comics, ...) can mean thousands of
+    // them. Skip the whole walk after the first successful run each
+    // process lifetime; a user adding new homebrew files mid-session
+    // just needs a full app restart to pick them up, same tradeoff
+    // EnsureSDCardImageIsFresh's own session cache already makes.
+    static bool s_built_this_session = false;
+    if (s_built_this_session) {
+        return root;
+    }
+
     std::error_code ec;
     fs::create_directories(root, ec);
 
@@ -392,6 +412,7 @@ fs::path BuildHomebrewSDCardRoot() {
         }
     }
 
+    s_built_this_session = true;
     return root;
 }
 
@@ -485,7 +506,15 @@ std::string MelonDSCore::SaveDirFor(const std::string& rom_path) const {
 }
 
 ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::string& path) {
-    if (!fs::exists(path)) {
+    // An empty path means "boot straight to the DSi Menu, no cart" --
+    // see the boot_to_menu branch further down. Real hardware does
+    // exactly this when powered on with no cart inserted; a real DSi
+    // NAND is required since FreeBIOS's synthesized firmware has no
+    // menu at all to boot into (checked once real DSi files are looked
+    // for below, since that's also where NeedsDirectBoot()-worthy real
+    // system files get discovered either way).
+    const bool boot_to_menu = path.empty();
+    if (!boot_to_menu && !fs::exists(path)) {
         return ResultStatus::ErrorLoader;
     }
 
@@ -612,6 +641,12 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
         }
     }
 
+    // dsi_nand is moved-from below once construction commits to the DSi
+    // branch -- capture whether we actually got a real DSi NAND before
+    // that happens, since boot_to_menu needs to know afterward and can't
+    // ask dsi_nand itself anymore by then.
+    const bool constructed_dsi = dsi_nand.has_value();
+
     if (dsi_nand.has_value()) {
         // Lives inside sdmc (the 3DS's own SD card folder) alongside
         // nds_sdcard_root -- see BuildHomebrewSDCardRoot's doc comment.
@@ -651,6 +686,24 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // cart-detection logic runs as real code during boot and needs that
     // baseline to correctly notice a cart appearing afterward.
     nds_->Reset();
+
+    if (boot_to_menu) {
+        if (!constructed_dsi) {
+            // No real DSi NAND -- FreeBIOS's synthesized firmware has no
+            // menu at all to boot into, only its own direct-boot shortcut.
+            nds_.reset();
+            return ResultStatus::ErrorSystemMode;
+        }
+        // No cart to insert: the baseline Reset() above plus this Start()
+        // is the whole boot sequence -- exactly what a real DSi's own
+        // bootrom/firmware does when powered on with no cart present,
+        // landing on the DSi Menu (its own, Nintendo-authored code, not
+        // ours) same as real hardware.
+        nds_->Start();
+        loaded_rom_path_.clear();
+        loaded_ = true;
+        return ResultStatus::Success;
+    }
 
     std::vector<uint8_t> romdata = ReadWholeFile(path);
     if (romdata.empty()) {
@@ -868,8 +921,27 @@ void MelonDSCore::RunFrame(const InputState& input, FrameOutput& out) {
 }
 
 void MelonDSCore::Reset() {
-    if (nds_)
-        nds_->Reset();
+    if (!nds_) {
+        return;
+    }
+    // A bare nds_->Reset() resets hardware state and leaves the system to
+    // boot normally from there -- fine with FreeBIOS's own direct-boot
+    // shortcut, but now that real DSi system files make this a genuine
+    // melonDS::DSi with a real NAND, "normally" means booting into the
+    // actual DSi Menu, not back into whatever game was running (exactly
+    // what a real console's own hardware reset does too). "Reset Game"
+    // is meant to restart the *current* game from power-on, so redo the
+    // same DirectBoot injection Load() does after its own Reset() --
+    // the cart itself is unaffected by Reset() and stays inserted, so
+    // this only needs the boot-sequence half repeated, not SetNDSCart().
+    nds_->Reset();
+    // Menu mode (see Load()'s boot_to_menu) has no cart and nothing to
+    // direct-boot into -- the Reset() above already lands back on the
+    // DSi Menu on its own, same as it did on the original boot.
+    if (!loaded_rom_path_.empty()) {
+        nds_->SetupDirectBoot(fs::path(loaded_rom_path_).filename().string());
+    }
+    nds_->Start();
 }
 
 void MelonDSCore::FlushSave() {

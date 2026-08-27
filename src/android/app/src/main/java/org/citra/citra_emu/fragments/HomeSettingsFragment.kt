@@ -33,6 +33,7 @@ import org.citra.citra_emu.CitraApplication
 import org.citra.citra_emu.HomeNavigationDirections
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
+import org.citra.citra_emu.activities.DsEmulationActivity
 import org.citra.citra_emu.adapters.HomeSettingAdapter
 import org.citra.citra_emu.databinding.DialogSoftwareKeyboardBinding
 import org.citra.citra_emu.databinding.FragmentHomeSettingsBinding
@@ -134,6 +135,27 @@ class HomeSettingsFragment : Fragment() {
                     exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, true)
                     parentFragmentManager.primaryNavigationFragment?.findNavController()
                         ?.navigate(R.id.action_homeSettingsFragment_to_systemFilesFragment)
+                }
+            ),
+            HomeSetting(
+                R.string.boot_dsi_menu,
+                R.string.boot_dsi_menu_description,
+                R.drawable.ic_controller,
+                {
+                    // Empty EXTRA_DS_ROM_PATH (DsEmulationActivity defaults
+                    // it to "" when absent anyway, but set it explicitly
+                    // for clarity) is MelonDSCore::Load's own signal to
+                    // boot straight to the DSi Menu with no cart, same as
+                    // real hardware does when powered on with nothing
+                    // inserted -- requires the real DSi system files
+                    // described in the README/STARTUP_GUIDE; without them
+                    // DsEmulationActivity's own load-error dialog explains
+                    // why (ErrorSystemMode).
+                    startActivity(
+                        Intent(context, DsEmulationActivity::class.java).apply {
+                            putExtra(DsEmulationActivity.EXTRA_DS_ROM_PATH, "")
+                        }
+                    )
                 }
             ),
             HomeSetting(

@@ -2317,6 +2317,10 @@ void GMainWindow::ConnectMenuEvents() {
     connect_menu(ui->action_Remove_Azahar_Encryption, &GMainWindow::OnMenuRemoveAzaharEncryption);
     connect_menu(ui->action_Revert_Encryption_Removal, &GMainWindow::OnMenuRevertEncryptionRemoval);
     connect_menu(ui->action_Setup_System_Files, &GMainWindow::OnMenuSetUpSystemFiles);
+    // Empty path is CoreFactory::Detect's own "boot straight to the DSi
+    // Menu, no cart" convention (see its doc comment) -- BootGame routes
+    // it to BootDSGame the same as any other .nds/.dsi file would.
+    connect_menu(ui->action_Boot_DSi_Menu, [this] { BootGame(QString()); });
     for (u32 region = 0; region < Core::NUM_SYSTEM_TITLE_REGIONS; region++) {
         connect_menu(ui->menu_Download_System_Files->actions().at(region),
                      [this, region] { OnDownloadSystemFilesMenu(region); });

@@ -409,7 +409,15 @@ void DsSession::Run() {
     // fails silently (CoreFactory::CreateFor can't even sniff the header
     // of a literal "!/storage/..." path) and the player just bounces
     // straight back out.
-    rom_path_ = AndroidUtils::TranslateFilePath(rom_path_);
+    // Empty rom_path_ is MelonDSCore::Load's own "boot straight to the DSi
+    // Menu, no cart" convention (see its boot_to_menu) -- must be left
+    // alone here, since TranslateFilePath treats "" as a relative path
+    // with nothing appended and resolves it to the SD root directory
+    // itself, which then fails to load as neither a valid DS ROM nor a
+    // 3DS one.
+    if (!rom_path_.empty()) {
+        rom_path_ = AndroidUtils::TranslateFilePath(rom_path_);
+    }
 
     NullEmuWindow window;
     auto core = MergedCore::CoreFactory::CreateFor(rom_path_);

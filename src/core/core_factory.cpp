@@ -72,6 +72,15 @@ bool CoreFactory::LooksLike3DS(const std::string& path) {
 }
 
 SystemKind CoreFactory::Detect(const std::string& path) {
+    // An empty path is MelonDSCore::Load's own convention for "boot
+    // straight to the DSi Menu, no cart" (see its boot_to_menu) --
+    // without this, an empty path falls through every check below to
+    // the ThreeDS default, so BootDSGame("")'s DSPlayerWindow would
+    // construct a ThreeDSCoreAdapter instead of the MelonDSCore it
+    // actually needs.
+    if (path.empty())
+        return SystemKind::DS;
+
     const std::string ext = ExtensionOf(path);
 
     if (ext == "nds" || ext == "dsi" || ext == "ids")

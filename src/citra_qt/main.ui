@@ -157,6 +157,7 @@
     <addaction name="menu_Download_System_Files"/>
     <addaction name="action_Setup_System_Files"/>
     <addaction name="menu_Boot_Home_Menu"/>
+    <addaction name="action_Boot_DSi_Menu"/>
     <addaction name="separator"/>
     <addaction name="menu_recent_files"/>
     <addaction name="separator"/>
@@ -384,6 +385,11 @@
   <action name="action_Setup_System_Files">
     <property name="text">
       <string>Set Up System Files...</string>
+    </property>
+  </action>
+  <action name="action_Boot_DSi_Menu">
+    <property name="text">
+      <string>Boot DSi Menu</string>
     </property>
   </action>
   <action name="action_Boot_Home_Menu_JPN">
