@@ -11,6 +11,59 @@ The DS/DSi core runs alongside the existing 3DS core rather than replacing it. A
 - **Direct DS ROM launch**: `.nds`/`.dsi` files can also be picked directly from the game list without going through a forwarder.
 - **Platform status**: forwarder redirection and direct DS launch both work on desktop (Windows/Linux/macOS) and Android. The Android build reads the exact same forwarder mapping file (`ds_forwarders.txt`) as desktop -- generate forwarders on desktop, then copy the resulting CIA and mapping file over.
 
+## DS/DSi folder layout
+
+The DS/DSi core shares the same virtual SD card as the 3DS side -- everything lives under one `sdmc/` folder, whose location depends on platform:
+
+| Platform | `sdmc/` location |
+|---|---|
+| macOS | `~/Library/Application Support/AzaharPlus/sdmc/` |
+| Windows | `%APPDATA%\AzaharPlus\sdmc\` |
+| Linux | `~/.local/share/azaharplus-emu/sdmc/` |
+| Android | Wherever you pointed the app during setup (Settings > System > Filesystem shows the exact path) -- pick this same folder if reinstalling/re-granting access. |
+
+Within `sdmc/`, DS/DSi content is organized like this:
+
+```
+sdmc/
+├── roms/
+│   ├── nds/            # .nds ROMs -- shown directly in the game list
+│   ├── dsi/             # .dsi ROMs
+│   └── gba/              # GBA ROMs (also read by GBARunner2 if present)
+├── BOOT.NDS              # TWiLightMenu++'s own loader, if you use it -- must
+│                          # sit loose at this top level, not inside a folder
+├── _nds/                 # TWiLightMenu++/nds-bootstrap's own support files
+│                          # (settings, cheats db, skins) -- goes with BOOT.NDS
+├── bios/                 # Optional real DS/DSi system files (see below)
+└── nds_sdcard_root/       # Auto-generated internal mirror -- do not edit by
+                            # hand, and don't place ROMs/homebrew here directly:
+                            # anything you want visible in the game list or
+                            # picked up by TWiLightMenu++ needs to live at the
+                            # real locations above instead. Rebuilt from them
+                            # automatically on the next boot.
+```
+
+Anything meant to be visible in the app's own game list (`.nds`/`.dsi` ROMs, or a loose `BOOT.NDS`) needs to live at these real top-level locations, not inside `nds_sdcard_root/` -- that folder is an auto-managed, internal working copy the DS core mirrors your real files into on every boot, and it's deliberately excluded from the game list to avoid listing everything twice.
+
+### Optional: real DSi system files, for TWiLightMenu++/MoonShell SD access
+
+TWiLightMenu++ and MoonShell 2 are DSi-enhanced titles that expect the DSi's own native SD/SDIO controller, not the plain DLDI-based "slot-1" access regular DS homebrew uses. Without real, dumped DSi system files, they'll boot but report "no SD card inserted" -- this is accurate to real DSi hardware behavior (a real DSi does the same for anything not properly DSi-enhanced-and-launched), not a bug, and it happens on the official melonDS app too.
+
+If you own a DSi and have dumped your own console's files (e.g. via GodMode9i), drop these seven files -- renamed exactly as below -- into `sdmc/bios/`:
+
+```
+sdmc/bios/
+├── bios9.bin            # regular DS ARM9 BIOS       (4 KB)
+├── bios7.bin            # regular DS ARM7 BIOS        (16 KB)
+├── firmware.bin         # regular DS firmware        (256 KB)
+├── dsi_bios9.bin        # DSi ARM9i BIOS               (64 KB)
+├── dsi_bios7.bin        # DSi ARM7i BIOS               (64 KB)
+├── dsi_firmware.bin     # DSi firmware                (128 KB)
+└── dsi_nand.bin         # full DSi NAND dump          (~240 MB)
+```
+
+All seven must be present together for DSi mode to activate. These are personal dumps of your own physical console -- never commit, share, or bundle them; each user supplies their own. The NAND file is also written to during emulation (titles, saves, settings), so treat the copy here as a live working copy, not your archival backup.
+
 # Features
 
 Everything from upstream Azahar, plus:

@@ -97,6 +97,48 @@ First-run setup specific to SweepDSEmu (DS support)
   name).
 
 
+Optional: real DSi system files, for TWiLightMenu++/MoonShell SD access
+-------------------------------------------------------------------------
+Without real DSi system files, SweepDSEmu runs DS titles with FreeBIOS
+and a generated firmware (fine for regular games), which only gives
+homebrew DLDI-based "slot-1" SD card access. TWiLightMenu++ and
+MoonShell 2 are DSi-enhanced titles that expect the DSi's own native
+SD/SDIO controller instead, which only exists once a real, genuine
+DSi console's dumped BIOS/firmware/NAND are supplied — without them
+they'll boot but report "no SD card inserted" (this happens on the
+official melonDS app too, for the same reason). This is NOT a bug in
+this emulator; it's accurate to how a real DSi behaves.
+
+If you own a DSi and have dumped your own console's files (e.g. via
+GodMode9i), drop these seven files, renamed exactly as below, into:
+    ~/Library/Application Support/AzaharPlus/sdmc/bios/
+(or the equivalent sdmc/bios/ folder for whichever platform you're on
+ -- see the platform-specific sections below for exact paths)
+
+    bios9.bin          <- your regular DS ARM9 BIOS      (4 KB)
+    bios7.bin          <- your regular DS ARM7 BIOS       (16 KB)
+    firmware.bin       <- your regular DS firmware        (256 KB)
+    dsi_bios9.bin      <- your DSi ARM9i BIOS              (64 KB)
+    dsi_bios7.bin      <- your DSi ARM7i BIOS              (64 KB)
+    dsi_firmware.bin   <- your DSi firmware                (128 KB)
+    dsi_nand.bin       <- your full DSi NAND dump          (~240 MB)
+
+All seven must be present together for DSi mode to activate -- with
+only the first three, DS titles still boot fine, just without native
+SDIO access. Once all seven are in place, launching a DSi-enhanced
+homebrew title (like TWiLightMenu++'s BOOT.NDS) boots through the
+real DSi Menu on your dumped NAND instead of a direct-boot shortcut,
+exactly like real hardware, and TWiLightMenu++/MoonShell get real SD
+access.
+
+IMPORTANT: these are dumps of YOUR OWN physical console and are
+personal/non-redistributable -- never commit them to this repo, share
+them, or bundle them in a release. Each user must supply their own.
+The dsi_nand.bin file is also written to during emulation (titles,
+saves, system settings), so treat the copy you place here as a live
+working copy, not your archival backup.
+
+
 ===========================================================
 2. WINDOWS (via Wine, or a real Windows machine/VM)
 ===========================================================
@@ -175,6 +217,18 @@ directory on Windows is normally:
     %APPDATA%\AzaharPlus\sdmc\roms\nds\
 (or wherever you configured it in Emulation > Configure > System >
 "Filesystem" if you changed the default user data location).
+
+The optional real-DSi-system-files setup above works the same way here
+— drop the same seven renamed files into:
+    %APPDATA%\AzaharPlus\sdmc\bios\
+
+Android: the equivalent folder is sdmc/bios/ under the app's storage
+location (Settings > System > "Filesystem" in-app shows the exact
+path; by default something like
+/storage/emulated/0/Download/AzaharPlus/sdmc/bios/, or wherever the
+app's data directory was set to on your device) — push the same seven
+renamed files there (e.g. via `adb push` or a file manager) for
+TWiLightMenu++/MoonShell SD access on Android too.
 
 The forwarder generator (tools/make_ds_forwarder.py) is a plain Python
 script and needs bannertool/makerom/devkitARM's Windows builds — see
