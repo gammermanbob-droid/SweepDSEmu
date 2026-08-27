@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<script>
+  // Driven by MartiniGlassProgressView (a WebView) via
+  // evaluateJavascript("window.setLoadingProgress(N)") -- the sweeping
+  // demo loop below must never run against a real build's progress.
+  window.__NO_DEMO__ = true;
+</script>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden;}
+  svg{display:block;width:100%;height:100%;}
+</style>
+</head>
+<body>
+<svg id="root" viewBox="0 0 800 760" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="glassGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#bfe3fb"/>
+      <stop offset="45%" stop-color="#cdf3e6"/>
+      <stop offset="100%" stop-color="#fdf0c2"/>
+    </linearGradient>
+
+    <linearGradient id="liquidGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#fff2b8"/>
+      <stop offset="50%"  stop-color="#ffce6b"/>
+      <stop offset="100%" stop-color="#ff9142"/>
+    </linearGradient>
+
+    <radialGradient id="orangeGrad" cx="35%" cy="28%" r="75%">
+      <stop offset="0%"  stop-color="#fff0d2"/>
+      <stop offset="35%" stop-color="#ffb04a"/>
+      <stop offset="100%" stop-color="#d9640c"/>
+    </radialGradient>
+
+    <radialGradient id="melonGrad" cx="35%" cy="28%" r="75%">
+      <stop offset="0%"  stop-color="#f2ffc9"/>
+      <stop offset="40%" stop-color="#9ede4a"/>
+      <stop offset="100%" stop-color="#458c1c"/>
+    </radialGradient>
+
+    <linearGradient id="pickGrad" x1="0" y1="0" x2="1" y2="0.2">
+      <stop offset="0%"  stop-color="#f5e6bd"/>
+      <stop offset="50%" stop-color="#e7cd8f"/>
+      <stop offset="100%" stop-color="#d9b96f"/>
+    </linearGradient>
+
+    <linearGradient id="textGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#f472b6"/>
+      <stop offset="20%"  stop-color="#b18cf6"/>
+      <stop offset="42%"  stop-color="#67a9f7"/>
+      <stop offset="62%"  stop-color="#3fd6b0"/>
+      <stop offset="82%"  stop-color="#8fd85a"/>
+      <stop offset="100%" stop-color="#f6c453"/>
+    </linearGradient>
+
+    <path id="sparkle" d="M0,-26 C4,-4 4,-4 26,0 C4,4 4,4 0,26 C-4,4 -4,4 -26,0 C-4,-4 -4,-4 0,-26 Z"/>
+
+    <clipPath id="glassClip">
+      <path d="M140,300 L660,300 L403,552 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- background sparkles / dots -->
+  <use href="#sparkle" transform="translate(70,90) scale(0.7)" fill="#eef2f6">
+    <animate attributeName="opacity" values="0.35;0.9;0.35" dur="2.4s" repeatCount="indefinite"/>
+  </use>
+  <use href="#sparkle" transform="translate(742,540) scale(0.45)" fill="#eef2f6">
+    <animate attributeName="opacity" values="0.9;0.35;0.9" dur="2.4s" repeatCount="indefinite"/>
+  </use>
+  <circle cx="46" cy="470" r="7" fill="none" stroke="#dfe6ec" stroke-width="3" opacity="0.8"/>
+  <circle cx="758" cy="150" r="6" fill="none" stroke="#dfe6ec" stroke-width="3" opacity="0.8"/>
+  <circle cx="400" cy="30" r="5" fill="none" stroke="#dfe6ec" stroke-width="3" opacity="0.8"/>
+
+  <!-- martini glass silhouette (base) -->
+  <g stroke="#ffffff" stroke-opacity="0.9" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M140,300 L660,300 L403,552 Z" fill="url(#glassGrad)" fill-opacity="0.35" stroke-width="7"/>
+    <rect x="391" y="552" width="22" height="118" rx="10" fill="url(#glassGrad)" fill-opacity="0.35" stroke-width="5"/>
+    <ellipse cx="402" cy="676" rx="115" ry="19" fill="url(#glassGrad)" fill-opacity="0.35" stroke-width="5"/>
+  </g>
+
+  <!-- liquid fill: level is driven by setLoadingProgress(0-100), see <script> below -->
+  <g clip-path="url(#glassClip)">
+    <g id="liquidLevel" transform="translate(0,610)">
+      <path fill="url(#liquidGrad)" opacity="0.92" id="wavePath"
+        d="M80,0 Q110,-10 140,0 Q170,10 200,0 Q230,-10 260,0 Q290,10 320,0 Q350,-10 380,0 Q410,10 440,0 Q470,-10 500,0 Q530,10 560,0 Q590,-10 620,0 Q650,10 680,0 Q710,-10 720,0 L720,460 L80,460 Z">
+        <animateTransform attributeName="transform" type="translate"
+          values="0,0;-60,0;0,0" dur="1.6s" repeatCount="indefinite"/>
+      </path>
+    </g>
+
+    <g fill="#fff8e8" opacity="0.7">
+      <circle cx="330" cy="540" r="5">
+        <animate attributeName="cy" values="545;300" dur="3s" begin="0.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.8;0" dur="3s" begin="0.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="400" cy="540" r="6">
+        <animate attributeName="cy" values="548;300" dur="3s" begin="0.9s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.8;0" dur="3s" begin="0.9s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="465" cy="540" r="4">
+        <animate attributeName="cy" values="545;300" dur="3s" begin="1.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.8;0" dur="3s" begin="1.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+  </g>
+
+  <!-- crisp glass outline redrawn on top of liquid -->
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M140,300 L660,300 L403,552 Z" stroke-width="7"/>
+    <rect x="391" y="552" width="22" height="118" rx="10" stroke-width="5"/>
+    <ellipse cx="402" cy="676" rx="115" ry="19" stroke-width="5"/>
+  </g>
+
+  <!-- garnish: toothpick + orange + melon, resting on the rim (static) -->
+  <g id="garnish">
+    <line x1="148" y1="278" x2="656" y2="278" stroke="#c9a86a" stroke-width="14" stroke-linecap="round"/>
+    <line x1="148" y1="278" x2="656" y2="278" stroke="url(#pickGrad)" stroke-width="8" stroke-linecap="round"/>
+
+    <g>
+      <circle cx="258" cy="288" r="96" fill="url(#orangeGrad)" stroke="#ffffff" stroke-width="5" stroke-opacity="0.9"/>
+      <ellipse cx="223" cy="247" rx="33" ry="21" fill="#fff6e6" opacity="0.85" transform="rotate(-18 223 247)"/>
+      <ellipse cx="300" cy="330" rx="27" ry="15" fill="#c4540b" opacity="0.35"/>
+    </g>
+
+    <g>
+      <circle cx="544" cy="288" r="96" fill="url(#melonGrad)" stroke="#ffffff" stroke-width="5" stroke-opacity="0.9"/>
+      <ellipse cx="509" cy="247" rx="31" ry="19" fill="#f6ffe2" opacity="0.85" transform="rotate(-18 509 247)"/>
+      <circle cx="566" cy="266" r="7" fill="#2e4d12" opacity="0.9"/>
+      <circle cx="592" cy="292" r="6" fill="#2e4d12" opacity="0.9"/>
+      <circle cx="560" cy="316" r="7" fill="#2e4d12" opacity="0.9"/>
+      <circle cx="588" cy="336" r="5" fill="#2e4d12" opacity="0.9"/>
+      <circle cx="536" cy="336" r="5" fill="#2e4d12" opacity="0.85"/>
+    </g>
+  </g>
+
+  <!-- optional percentage readout; set SHOW_PERCENT=false in the script below to hide -->
+  <text id="pctLabel" x="402" y="730" text-anchor="middle" font-family="'Arial Rounded MT Bold','Helvetica Rounded',Arial,sans-serif" font-weight="700" font-size="30" fill="#8b98a6">0%</text>
+</svg>
+
+<script>
+  var SHOW_PERCENT = true; // set false to hide the "NN%" readout under the glass
+
+  // Public API: call this with a number 0-100 to set the fill level, e.g.
+  //   window.setLoadingProgress(37);
+  var EMPTY_Y = 610, FULL_Y = 290;
+  function setLoadingProgress(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    var y = EMPTY_Y + (FULL_Y - EMPTY_Y) * (pct / 100);
+    document.getElementById('liquidLevel').setAttribute('transform', 'translate(0,' + y + ')');
+    var label = document.getElementById('pctLabel');
+    if (label) label.textContent = Math.round(pct) + '%';
+  }
+  window.setLoadingProgress = setLoadingProgress;
+  if (!SHOW_PERCENT) document.getElementById('pctLabel').style.display = 'none';
+
+  // --- demo only: sweeps 0% -> 100% -> 0% on a loop so the animation is visible
+  // when you just open this file. Never runs here since __NO_DEMO__ is set above.
+  if (!window.__NO_DEMO__) (function demo() {
+    var period = 5000; // ms for a full 0->100->0 cycle
+    function frame(ts) {
+      var phase = (ts % period) / period;
+      var pct = (1 - Math.cos(phase * 2 * Math.PI)) * 50;
+      setLoadingProgress(pct);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+</script>
+</body>
+</html>
