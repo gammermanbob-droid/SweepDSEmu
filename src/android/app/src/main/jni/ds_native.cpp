@@ -188,14 +188,36 @@ void DsSession::InitAudio(int sample_rate) {
     AAudioStreamBuilder_setSampleRate(builder, sample_rate);
     AAudioStreamBuilder_setChannelCount(builder, 2);
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
-    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    // WriteAudio feeds this in ~16ms-apart bursts straight from the DS
+    // frame loop, not a steady small-callback cadence -- LOW_LATENCY's
+    // tiny exclusive-MMAP burst buffer (~2ms on this hardware) can't
+    // absorb normal scheduling jitter against that pattern, which is
+    // what produced audible crackling and eventually a hard stream
+    // disconnect. NONE uses the standard mixer path with a much deeper
+    // buffer, trading a bit of extra latency (imperceptible for DS game
+    // audio) for one that isn't perpetually on the edge of underrunning.
+    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_NONE);
     AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
+    // Without these, the stream defaults to AAUDIO_CONTENT_TYPE_UNKNOWN,
+    // which some OEM audio policies (observed on a Samsung device here)
+    // route/attenuate differently than a properly-tagged game/media
+    // stream -- explicit tagging matches what every other audio output in
+    // this app (3DS side, NDSBrewer's own menu music) already gets.
+    AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
+    AAudioStreamBuilder_setContentType(builder, AAUDIO_CONTENT_TYPE_MUSIC);
     if (AAudioStreamBuilder_openStream(builder, &audio_stream_) != AAUDIO_OK) {
         LOG_ERROR(Frontend, "DS: failed to open AAudio stream");
         audio_stream_ = nullptr;
     }
     AAudioStreamBuilder_delete(builder);
     if (audio_stream_) {
+        // Give the writer as much slack as the device will allow, on top
+        // of the already-deeper NONE-mode buffer -- cheap insurance
+        // against the same kind of underrun/crackle this is fixing.
+        const int32_t capacity = AAudioStream_getBufferCapacityInFrames(audio_stream_);
+        if (capacity > 0) {
+            AAudioStream_setBufferSizeInFrames(audio_stream_, capacity);
+        }
         AAudioStream_requestStart(audio_stream_);
     }
 }
