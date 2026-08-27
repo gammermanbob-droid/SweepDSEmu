@@ -625,22 +625,31 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     // convincing but misleading "it boots but shows a black screen."
     nds_->Start();
 
-    // Point save data at our own directory (see SaveDirFor) rather
-    // than melonDS's default, which assumes it's the only emulator
-    // touching the filesystem. If nothing's there yet, migrate a
-    // legacy save sitting next to the ROM itself -- the convention
-    // real flashcarts, DraStic, and melonDS's own desktop frontend all
-    // use by default -- so save data a user already had (e.g. copied
-    // over from a real cart dump, or another emulator) isn't silently
-    // ignored just because this fork keeps DS saves out of the 3DS
-    // save tree.
+    // Point save data at our own directory (see SaveDirFor) rather than
+    // melonDS's default, which assumes it's the only emulator touching
+    // the filesystem. A legacy save sitting next to the ROM itself --
+    // the convention real flashcarts, DraStic, and melonDS's own
+    // desktop frontend all use by default -- is synced in on every
+    // load whenever it's newer than what's in our own directory, not
+    // just the first time: some ROM tools/companion apps write or
+    // refresh that adjacent .sav on their own at any point, not only
+    // before a game's first launch here, so a one-time check would
+    // miss anything created or updated later. Comparing mtimes (rather
+    // than always preferring the legacy file) is what keeps this from
+    // clobbering a newer save this core itself already wrote back.
     const std::string save_path = SaveDirFor(path);
     std::error_code ec;
-    if (!fs::exists(save_path, ec)) {
-        fs::path legacy_save = fs::path(path);
-        legacy_save.replace_extension(".sav");
-        if (fs::exists(legacy_save, ec)) {
-            fs::copy_file(legacy_save, save_path, ec);
+    fs::path legacy_save = fs::path(path);
+    legacy_save.replace_extension(".sav");
+    if (fs::exists(legacy_save, ec)) {
+        bool sync_from_legacy = !fs::exists(save_path, ec);
+        if (!sync_from_legacy) {
+            const auto legacy_time = fs::last_write_time(legacy_save, ec);
+            const auto our_time = fs::last_write_time(save_path, ec);
+            sync_from_legacy = !ec && legacy_time > our_time;
+        }
+        if (sync_from_legacy) {
+            fs::copy_file(legacy_save, save_path, fs::copy_options::overwrite_existing, ec);
         }
     }
     std::vector<uint8_t> savedata = ReadWholeFile(save_path);
