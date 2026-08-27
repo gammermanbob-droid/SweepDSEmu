@@ -627,8 +627,23 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
 
     // Point save data at our own directory (see SaveDirFor) rather
     // than melonDS's default, which assumes it's the only emulator
-    // touching the filesystem.
-    std::vector<uint8_t> savedata = ReadWholeFile(SaveDirFor(path));
+    // touching the filesystem. If nothing's there yet, migrate a
+    // legacy save sitting next to the ROM itself -- the convention
+    // real flashcarts, DraStic, and melonDS's own desktop frontend all
+    // use by default -- so save data a user already had (e.g. copied
+    // over from a real cart dump, or another emulator) isn't silently
+    // ignored just because this fork keeps DS saves out of the 3DS
+    // save tree.
+    const std::string save_path = SaveDirFor(path);
+    std::error_code ec;
+    if (!fs::exists(save_path, ec)) {
+        fs::path legacy_save = fs::path(path);
+        legacy_save.replace_extension(".sav");
+        if (fs::exists(legacy_save, ec)) {
+            fs::copy_file(legacy_save, save_path, ec);
+        }
+    }
+    std::vector<uint8_t> savedata = ReadWholeFile(save_path);
     if (!savedata.empty()) {
         nds_->SetNDSSave(savedata.data(), static_cast<melonDS::u32>(savedata.size()));
     }
