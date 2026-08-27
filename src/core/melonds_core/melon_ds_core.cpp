@@ -755,15 +755,19 @@ void MelonDSCore::Reset() {
         nds_->Reset();
 }
 
-void MelonDSCore::Shutdown() {
-    if (nds_ && loaded_) {
-        const uint8_t* save = nds_->GetNDSSave();
-        uint32_t save_len = nds_->GetNDSSaveLength();
-        if (save && save_len) {
-            std::ofstream f(SaveDirFor(loaded_rom_path_), std::ios::binary | std::ios::trunc);
-            f.write(reinterpret_cast<const char*>(save), save_len);
-        }
+void MelonDSCore::FlushSave() {
+    if (!nds_ || !loaded_)
+        return;
+    const uint8_t* save = nds_->GetNDSSave();
+    uint32_t save_len = nds_->GetNDSSaveLength();
+    if (save && save_len) {
+        std::ofstream f(SaveDirFor(loaded_rom_path_), std::ios::binary | std::ios::trunc);
+        f.write(reinterpret_cast<const char*>(save), save_len);
     }
+}
+
+void MelonDSCore::Shutdown() {
+    FlushSave();
     nds_.reset();
     loaded_ = false;
 }

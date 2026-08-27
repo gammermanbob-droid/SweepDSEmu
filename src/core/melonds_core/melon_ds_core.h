@@ -36,6 +36,7 @@ public:
     void RunFrame(const InputState& input, FrameOutput& out) override;
     void Reset() override;
     void Shutdown() override;
+    void FlushSave() override;
 
     bool SaveState(const std::string& path) override;
     bool LoadState(const std::string& path) override;

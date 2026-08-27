@@ -100,6 +100,16 @@ public:
     virtual void Reset() = 0;
     virtual void Shutdown() = 0;
 
+    // Persists native cart save data (SRAM/EEPROM/Flash) to disk right
+    // now, without shutting down -- otherwise that data only ever hits
+    // disk on a clean Shutdown(), which never happens if the process is
+    // killed while backgrounded (Android can do this at any time) or
+    // crashes, silently losing whatever the game itself had "saved"
+    // since the last clean exit. No-op by default: cores whose save
+    // data is already written directly by their own filesystem layer
+    // (e.g. the 3DS side, via Service::FS) have nothing to flush here.
+    virtual void FlushSave() {}
+
     // Savestates. Both cores serialize to an opaque byte blob; the
     // frontend is responsible for choosing a per-core save directory
     // (see melon_ds_core.cpp's SaveDirFor()) so 3DS and DS states never

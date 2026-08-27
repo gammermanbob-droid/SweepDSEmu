@@ -69,6 +69,11 @@ public:
     void Pause() {
         std::lock_guard lock(pause_mutex_);
         pause_requested_ = true;
+        // Backgrounding is exactly when Android is most likely to kill
+        // this process without warning -- flush now rather than only on
+        // a clean Shutdown() that may never come. Consumed on the Run()
+        // thread (see the main loop), since `core` is local to it.
+        flush_save_requested_.store(true, std::memory_order_relaxed);
     }
 
     void Unpause() {
@@ -154,6 +159,7 @@ private:
     std::thread run_thread_;
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> reset_requested_{false};
+    std::atomic<bool> flush_save_requested_{false};
 
     std::mutex pause_mutex_;
     std::condition_variable pause_cv_;
@@ -327,8 +333,25 @@ void DsSession::Run() {
     const auto frame_period = std::chrono::duration<double>(1.0 / core->GetTargetFPS());
     auto next_frame = std::chrono::steady_clock::now();
     bool console_powered_off = false;
+    // Periodic safety-net autosave, on top of the pause-triggered one in
+    // the loop below -- ~10s at the DS's ~59.8fps; cart save data is at
+    // most a few hundred KB, so writing it out this often costs
+    // essentially nothing.
+    static constexpr int kAutosaveIntervalFrames = 600;
+    int frames_since_save_flush = 0;
 
     while (!stop_requested_.load(std::memory_order_relaxed)) {
+        // Checked *before* the pause-wait below: Pause() sets this from
+        // the JNI/UI thread the instant the app backgrounds, and if this
+        // check lived after the wait, a loop iteration that was already
+        // mid-frame when Pause() fired would go straight from finishing
+        // that frame into blocking on pause_cv_ without ever reaching
+        // it -- exactly the moment a save flush matters most, since
+        // Android can kill this process at any point once backgrounded.
+        if (flush_save_requested_.exchange(false, std::memory_order_relaxed)) {
+            core->FlushSave();
+        }
+
         {
             std::unique_lock lock(pause_mutex_);
             pause_cv_.wait(lock, [this] {
@@ -353,6 +376,14 @@ void DsSession::Run() {
 
         if (reset_requested_.exchange(false)) {
             core->Reset();
+        }
+
+        // Periodic safety-net flush while actively playing -- covers a
+        // crash or an OS kill that happens to land in the foreground,
+        // not just while backgrounded.
+        if (++frames_since_save_flush >= kAutosaveIntervalFrames) {
+            frames_since_save_flush = 0;
+            core->FlushSave();
         }
 
         MergedCore::InputState input;
