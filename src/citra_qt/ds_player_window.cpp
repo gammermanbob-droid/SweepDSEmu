@@ -483,6 +483,10 @@ void DSPlayerWindow::mouseReleaseEvent(QMouseEvent* /*event*/) {
     RebuildKeyMask();
 }
 
+void DSPlayerWindow::RequestReset() {
+    thread_->RequestReset();
+}
+
 void DSPlayerWindow::keyPressEvent(QKeyEvent* event) {
     if (event->isAutoRepeat()) {
         return;
@@ -508,7 +512,7 @@ void DSPlayerWindow::keyPressEvent(QKeyEvent* event) {
         thread_->RequestLoadState(StatePathFor(windowTitle()));
         return;
     case Qt::Key_F1:
-        thread_->RequestReset();
+        RequestReset();
         return;
     default:
         break;

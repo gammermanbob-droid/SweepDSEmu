@@ -191,6 +191,7 @@
     <addaction name="action_Pause"/>
     <addaction name="action_Stop"/>
     <addaction name="action_Restart"/>
+    <addaction name="action_Ds_Reset_Game"/>
     <addaction name="separator"/>
     <addaction name="menu_Load_State"/>
     <addaction name="menu_Save_State"/>
@@ -855,6 +856,11 @@
   <action name="action_Report_Compatibility">
    <property name="text">
     <string>Report Compatibility</string>
+   </property>
+  </action>
+  <action name="action_Ds_Reset_Game">
+   <property name="text">
+    <string>Reset DS Game</string>
    </property>
   </action>
   <action name="action_Restart">

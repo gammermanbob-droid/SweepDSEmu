@@ -2344,6 +2344,11 @@ void GMainWindow::ConnectMenuEvents() {
     connect_menu(ui->action_Pause, &GMainWindow::OnPauseContinueGame);
     connect_menu(ui->action_Stop, &GMainWindow::OnStopGame);
     connect_menu(ui->action_Restart, [this] { BootGame(QString(game_path)); });
+    connect_menu(ui->action_Ds_Reset_Game, [this] {
+        if (ds_player_window) {
+            ds_player_window->RequestReset();
+        }
+    });
     connect_menu(ui->action_Report_Compatibility, []() {
         QDesktopServices::openUrl(QUrl(QStringLiteral(
             "https://github.com/azahar-emu/compatibility-list/blob/master/CONTRIBUTING.md")));

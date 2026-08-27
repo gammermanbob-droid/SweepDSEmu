@@ -90,6 +90,15 @@ public:
     explicit DSPlayerWindow(const QString& rom_path, QWidget* parent = nullptr);
     ~DSPlayerWindow() override;
 
+    // Same as pressing F1 (see keyPressEvent) -- exposed for
+    // GMainWindow's "Reset DS Game" menu item, since a top-bar menu
+    // item is more discoverable than an undocumented hotkey. Restarts
+    // the current game from power-on, or -- if this window is in "Boot
+    // DSi Menu" mode with no cart -- cleanly re-boots the DSi Menu
+    // itself (see MelonDSCore::Reset's own doc comment for why those
+    // are different outcomes from the same call).
+    void RequestReset();
+
 signals:
     // Emitted on the "return to 3DS HOME Menu" hotkey (F12) — a
     // deliberate user action distinct from just closing the window, so
