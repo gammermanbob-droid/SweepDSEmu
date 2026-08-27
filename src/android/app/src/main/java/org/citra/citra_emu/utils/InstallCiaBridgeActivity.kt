@@ -4,6 +4,7 @@
 
 package org.citra.citra_emu.utils
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -15,6 +16,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import org.citra.citra_emu.R
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * No-UI entry point that lets SweepDSEmuNDSBrewer -- a separate APK, so it
@@ -50,6 +52,13 @@ class InstallCiaBridgeActivity : AppCompatActivity() {
         const val EXTRA_CIA_PATH = "CIA_PATH"
     }
 
+    // singleInstance means NDSBrewer's build-then-install-all loop delivers
+    // its 2nd, 3rd, etc. request to this same running instance via
+    // onNewIntent rather than a fresh onCreate -- each is tracked here so
+    // the activity doesn't finish() after the first one completes while
+    // later ones are still installing in the background.
+    private val pendingInstalls = AtomicInteger(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -67,12 +76,28 @@ class InstallCiaBridgeActivity : AppCompatActivity() {
             return
         }
 
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!BuildUtil.isGooglePlayBuild) {
+            handleIntent(intent)
+        }
+    }
+
+    private fun handleIntent(intent: Intent) {
         val ciaPath = intent.getStringExtra(EXTRA_CIA_PATH)
         if (ciaPath.isNullOrEmpty() || !File(ciaPath).isFile) {
             Toast.makeText(this, R.string.cia_file_not_found, Toast.LENGTH_LONG).show()
-            finish()
+            if (pendingInstalls.get() <= 0) {
+                finish()
+            }
             return
         }
+
+        pendingInstalls.incrementAndGet()
 
         val fileUri = android.net.Uri.fromFile(File(ciaPath)).toString()
         val request = OneTimeWorkRequest.Builder(CiaInstallWorker::class.java)
@@ -84,14 +109,28 @@ class InstallCiaBridgeActivity : AppCompatActivity() {
             .build()
 
         val workManager = WorkManager.getInstance(applicationContext)
-        workManager.enqueueUniqueWork("installCiaWork", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        // Unique per-request name (not a fixed one shared by every call) --
+        // each queued forwarder install has to run and get observed
+        // independently so a later one finishing doesn't get missed while
+        // an earlier one is still being watched.
+        workManager.enqueueUniqueWork(
+            "installCiaWork:${request.id}",
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request
+        )
         workManager.getWorkInfoByIdLiveData(request.id).observe(this) { info ->
             if (info != null && info.state.isFinished) {
                 if (info.state == WorkInfo.State.SUCCEEDED) {
                     File(ciaPath).delete()
                 }
-                finish()
+                finishIfNoPendingInstalls()
             }
+        }
+    }
+
+    private fun finishIfNoPendingInstalls() {
+        if (pendingInstalls.decrementAndGet() <= 0) {
+            finish()
         }
     }
 }

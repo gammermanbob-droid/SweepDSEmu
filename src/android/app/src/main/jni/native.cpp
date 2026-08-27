@@ -879,7 +879,12 @@ void Java_org_citra_citra_1emu_NativeLibrary_stopEmulation([[maybe_unused]] JNIE
                                                            [[maybe_unused]] jobject obj) {
     stop_run = true;
     pause_emulation = false;
-    window->StopPresenting();
+    // window is already null here on the DS-forwarder redirect path: RunCitra's
+    // SCOPE_EXIT-triggered TryShutdown() resets it before returning, well
+    // before Android tears down EmulationFragment and reaches this call.
+    if (window) {
+        window->StopPresenting();
+    }
     if (secondary_window) {
         secondary_window->StopPresenting();
     }
@@ -953,6 +958,9 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onTouchEvent([[maybe_unused]] J
                                                               [[maybe_unused]] jobject obj,
                                                               jfloat x, jfloat y,
                                                               jboolean pressed) {
+    if (!window) {
+        return JNI_FALSE;
+    }
     return static_cast<jboolean>(
         window->OnTouchEvent(static_cast<int>(x + 0.5), static_cast<int>(y + 0.5), pressed));
 }
@@ -960,6 +968,9 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onTouchEvent([[maybe_unused]] J
 void Java_org_citra_citra_1emu_NativeLibrary_onTouchMoved([[maybe_unused]] JNIEnv* env,
                                                           [[maybe_unused]] jobject obj, jfloat x,
                                                           jfloat y) {
+    if (!window) {
+        return;
+    }
     window->OnTouchMoved((int)x, (int)y);
 }
 
