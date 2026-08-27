@@ -1,12 +1,16 @@
 // src/core/melonds_core/melon_ds_core.cpp
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <set>
+#include <string_view>
 #include <vector>
 
 #include "core/melonds_core/melon_ds_core.h"
@@ -244,17 +248,103 @@ void LinkOrCopyDirectory(const fs::path& target, const fs::path& link) {
     CopyDirectoryRecursive(target, link);
 }
 
+// Same idea as LinkOrCopyDirectory, for a single loose file (e.g. a
+// flashcart-style auto-boot BOOT.NDS sitting directly at the real SD
+// root) -- symlinked where the storage backend allows it, falling back
+// to a real copy (kept in sync via update_existing semantics) otherwise.
+void LinkOrCopyFile(const fs::path& target, const fs::path& link) {
+    std::error_code ec;
+    if (fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
+        return;
+    }
+    if (fs::exists(link, ec)) {
+        std::error_code eq_ec;
+        if (fs::equivalent(target, link, eq_ec) && !eq_ec) {
+            return; // already the same file somehow -- nothing to do
+        }
+    }
+
+    fs::remove(link, ec);
+    fs::create_symlink(target, link, ec);
+    if (!ec && fs::is_symlink(link, ec) && fs::read_symlink(link, ec) == target) {
+        return;
+    }
+
+    fs::remove(link, ec);
+    fs::copy_file(target, link, fs::copy_options::update_existing, ec);
+    if (ec) {
+        LOG_ERROR(Core, "Failed to copy {} to {}: {}", target.string(), link.string(),
+                   ec.message());
+    }
+}
+
 fs::path BuildHomebrewSDCardRoot() {
     const fs::path sdmc = ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)));
-    const fs::path root =
-        ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard_root");
+    // Lives inside sdmc itself (the 3DS's own SD card folder) rather than
+    // as a separate sibling directory, so there's one SD card location to
+    // browse/manage instead of two -- excluded from the top-level mirror
+    // loop below the same way "roms" and "Nintendo 3DS" are, since it's
+    // now nested inside the very tree that loop walks.
+    const fs::path root = sdmc / "nds_sdcard_root";
     std::error_code ec;
     fs::create_directories(root, ec);
 
-    {
-        const fs::path target = sdmc / "_nds";
-        if (fs::is_directory(target, ec)) {
-            LinkOrCopyDirectory(target, root / "_nds");
+    // Mirror every top-level entry directly under sdmc except "roms"
+    // (handled separately below, per DS/DSi/GBA platform subfolder only)
+    // and "Nintendo 3DS" (the emulated 3DS's own title/save/extdata
+    // library, which can genuinely run into the tens or hundreds of GB
+    // -- see this function's own original design note below). There's
+    // no fixed list of folder/file names that covers every homebrew
+    // menu or utility's own particular needs (TWiLightMenu++'s _nds,
+    // a flashcart-style auto-boot BOOT.NDS sitting loose at the SD
+    // root, MoonShell2/ComicBookDS's own resource folders, ...) --
+    // previously only a hardcoded handful of names were synced at all,
+    // so anything outside that list (confirmed here: a user's _nds
+    // folder simply didn't exist yet because nothing had ever created
+    // it) was invisible to the emulated DS regardless of what the real
+    // sdmc folder actually had. LinkOrCopyDirectory/LinkOrCopyFile
+    // prefer a real symlink wherever the storage backend supports one,
+    // so this costs no extra disk space in the common case -- only
+    // Android's FUSE-mediated scoped storage (which can't symlink at
+    // all) pays for an actual copy, exactly like the old allowlist's
+    // own entries already did.
+    // Unambiguously 3DS-only -- never something a DS homebrew menu reads,
+    // but easy to end up sitting at sdmc's top level next to genuinely
+    // DS-relevant content (a user's own CIA installs, 3DS-only companion
+    // homebrew folders). Mirroring these in only bloats the DS's FAT
+    // image for no benefit: melonDS's FATStorage does uncached,
+    // one-syscall-per-512-byte-sector file I/O with no read-ahead, so an
+    // image bloated well past available RAM turns into real random disk
+    // seeks for anything that streams through it at speed (MoonShell2
+    // video/audio playback in particular).
+    static constexpr std::array<std::string_view, 3> kThreeDsOnlyNames = {
+        "3ds cias",
+        "Mp3 4 3DS",
+        "CTGP-7",
+    };
+    for (const auto& entry : fs::directory_iterator(sdmc, ec)) {
+        const fs::path& name = entry.path().filename();
+        const std::string name_str = name.string();
+        std::string ext_str = name.extension().string();
+        std::transform(ext_str.begin(), ext_str.end(), ext_str.begin(),
+                        [](unsigned char c) { return std::tolower(c); });
+        // "nds_sdcard_root" is this very function's own output directory,
+        // now nested inside sdmc -- and the "nds_sdcard.img"/
+        // "dsi_sdcard.img" FAT images (plus their .idx/.contents
+        // sidecars) live here too now, neither of which are homebrew
+        // content to mirror into themselves.
+        if (name == "roms" || name == "Nintendo 3DS" || name == "nds_sdcard_root" ||
+            name_str.starts_with("nds_sdcard.img") || name_str.starts_with("dsi_sdcard.img") ||
+            ext_str == ".cia" || ext_str == ".cxi" || ext_str == ".3dsx" ||
+            std::find(kThreeDsOnlyNames.begin(), kThreeDsOnlyNames.end(), name_str) !=
+                kThreeDsOnlyNames.end()) {
+            continue;
+        }
+        std::error_code entry_ec;
+        if (entry.is_directory(entry_ec)) {
+            LinkOrCopyDirectory(entry.path(), root / name);
+        } else if (entry.is_regular_file(entry_ec)) {
+            LinkOrCopyFile(entry.path(), root / name);
         }
     }
 
@@ -264,7 +354,7 @@ fs::path BuildHomebrewSDCardRoot() {
     // core) -- syncing those too just wastes space and time in this
     // DS-only virtual SD card, and can push its content past the FAT
     // image's capacity, silently dropping unrelated files (see
-    // EnsureSDCardImageFitsContent).
+    // EnsureSDCardImageIsFresh).
     // A previous version of this function symlinked the whole of
     // `roms` in one shot (root/roms -> sdmc/roms) rather than per
     // platform subfolder as below. If that symlink is still here from
@@ -305,25 +395,38 @@ fs::path BuildHomebrewSDCardRoot() {
     return root;
 }
 
-// melonDS's FATStorage only computes an image's size ONCE, at first
-// creation (from the source directory's contents at that moment, plus
-// 128MB leeway) -- every later Load() just reuses whatever size the
-// existing .img/.idx pair already has, regardless of how much the
-// source directory has grown since. Once the real content outgrows
-// the frozen image size, ImportDirectory silently fails to sync
-// whichever files don't fit, in whatever order its internal directory
-// walk happens to hit them -- which can mean a user's selected game,
-// or nds-bootstrap itself, is simply missing from the virtual SD card
-// with no visible warning. Delete a stale image so FATStorage recreates
-// it at a size that actually fits the current content.
-void EnsureSDCardImageFitsContent(const fs::path& imgPath, const fs::path& sourceDir) {
+// melonDS's own FATStorage::ImportDirectory (see FATStorage.cpp) already
+// re-syncs incrementally on every single construction -- comparing each
+// file's size/mtime against its own persisted index and only re-importing
+// what actually changed -- so it does NOT need our help noticing ordinary
+// added/changed files; an earlier version of this comment claimed
+// otherwise and was wrong. The one thing FATStorage genuinely can't fix on
+// its own is its *size*: that's decided once, at first creation, from
+// sourceDir's size at that moment, and never revisited -- if sourceDir
+// later outgrows it, ImportDirectory silently drops whatever doesn't fit,
+// with no error beyond whatever the homebrew itself reports (e.g.
+// TWiLightMenu++'s own "no SD card inserted" at boot). This exists purely
+// to catch *that* one case and force a resize by deleting the image so
+// FATStorage recreates it at a size that fits.
+//
+// Walking all of sourceDir to total its size is real I/O, though --
+// cheap for a small homebrew folder, but this project's own sourceDir can
+// run into the tens of GB (MoonShell2 movie files, a large ROM
+// collection, ...), and repeating that walk on every single DS game
+// launch was measurably slowing down load times even for retail games
+// that never touch the SD card at all. sourceDir only actually changes
+// when the user manually drops new files into it between sessions, so
+// checking once per process lifetime per image path is enough --
+// s_checked_this_session below is intentionally never cleared.
+void EnsureSDCardImageIsFresh(const fs::path& imgPath, const fs::path& sourceDir) {
+    static std::set<std::string> s_checked_this_session;
+    if (!s_checked_this_session.insert(imgPath.string()).second) {
+        return; // already verified this image once this process run
+    }
+
     std::error_code ec;
     if (!fs::exists(imgPath, ec)) {
-        return; // no existing image yet; FATStorage will size it correctly on first creation
-    }
-    const auto imgSize = fs::file_size(imgPath, ec);
-    if (ec) {
-        return;
+        return; // no existing image yet; FATStorage will import sourceDir fresh
     }
 
     std::uintmax_t contentSize = 0;
@@ -334,16 +437,17 @@ void EnsureSDCardImageFitsContent(const fs::path& imgPath, const fs::path& sourc
             ec.clear();
             continue;
         }
-        if (!it->is_directory(ec)) {
-            contentSize += it->file_size(ec);
-            ec.clear();
+        if (it->is_directory(ec)) {
+            continue;
         }
+        contentSize += it->file_size(ec);
     }
 
-    // Match FATStorage's own 128MB leeway so a rebuild isn't triggered
-    // by the same margin it would already account for on first creation.
+    // Match FATStorage's own 128MB leeway so a rebuild isn't triggered by
+    // the same margin it would already account for on first creation.
     constexpr std::uintmax_t kLeeway = 0x8000000ULL;
-    if (contentSize + kLeeway > imgSize) {
+    const auto imgSize = fs::file_size(imgPath, ec);
+    if (!ec && contentSize + kLeeway > imgSize) {
         LOG_WARNING(Core,
                     "SD card image {} ({} bytes) is too small for its current source content "
                     "({} bytes) -- deleting so it gets rebuilt at the correct size",
@@ -509,9 +613,11 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
     }
 
     if (dsi_nand.has_value()) {
-        const fs::path dsi_sdcard_img =
-            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "dsi_sdcard.img");
-        EnsureSDCardImageFitsContent(dsi_sdcard_img, fs::path(get_homebrew_sdcard_root()));
+        // Lives inside sdmc (the 3DS's own SD card folder) alongside
+        // nds_sdcard_root -- see BuildHomebrewSDCardRoot's doc comment.
+        const fs::path dsi_sdcard_img = ToRealPath(
+            fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)) / "dsi_sdcard.img");
+        EnsureSDCardImageIsFresh(dsi_sdcard_img, fs::path(get_homebrew_sdcard_root()));
         melonDS::DSiArgs dsi_args{
             std::move(args),
             std::move(dsi_bios9),
@@ -577,9 +683,11 @@ ResultStatus MelonDSCore::Load(Frontend::EmuWindow& /*window*/, const std::strin
         rom_is_homebrew = header.IsHomebrew();
     }
     if (rom_is_homebrew) {
-        const fs::path nds_sdcard_img =
-            ToRealPath(fs::path(FileUtil::GetUserPath(FileUtil::UserPath::UserDir)) / "nds_sdcard.img");
-        EnsureSDCardImageFitsContent(nds_sdcard_img, fs::path(get_homebrew_sdcard_root()));
+        // Lives inside sdmc (the 3DS's own SD card folder) alongside
+        // nds_sdcard_root -- see BuildHomebrewSDCardRoot's doc comment.
+        const fs::path nds_sdcard_img = ToRealPath(
+            fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)) / "nds_sdcard.img");
+        EnsureSDCardImageIsFresh(nds_sdcard_img, fs::path(get_homebrew_sdcard_root()));
         cart_args.SDCard = melonDS::FATStorageArgs{
             nds_sdcard_img.string(),
             0, // auto-size from the source directory's contents
