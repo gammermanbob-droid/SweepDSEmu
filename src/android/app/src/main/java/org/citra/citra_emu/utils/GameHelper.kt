@@ -63,6 +63,16 @@ object GameHelper {
 
         files.forEach {
             if (it.isDirectory) {
+                // "nds_sdcard_root" is MelonDSCore's own internal mirror of
+                // this same sdmc tree (built for the DS core's virtual SD
+                // card, see BuildHomebrewSDCardRoot in melon_ds_core.cpp)
+                // -- everything under it is a copy of a real file that
+                // already got listed once from its actual location, so
+                // recursing into it too just shows every DS ROM/homebrew
+                // file twice.
+                if (it.filename == "nds_sdcard_root") {
+                    return@forEach
+                }
                 addGamesRecursive(games, FileUtil.listFiles(it.uri), depth - 1)
             } else {
                 if (Game.allExtensions.contains(FileUtil.getExtension(it.uri))) {
