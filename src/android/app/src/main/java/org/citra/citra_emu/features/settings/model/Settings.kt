@@ -264,6 +264,13 @@ class Settings {
         // window, so this only ever shrinks them (to free up room for
         // the button overlay), never grows past what already fit.
         const val KEY_DS_SCREEN_SCALE = "ds_screen_scale"
+        // Auto-saves a savestate when a DS game closes and auto-loads it
+        // the next time that same game opens, so play resumes exactly
+        // where it left off -- independent of the game's own cart save
+        // data (which only updates whenever the game itself decides to
+        // write it). On by default; off restores the old always-boot-
+        // fresh behavior.
+        const val KEY_DS_AUTO_SAVESTATE = "ds_auto_savestate"
 
         val dsButtonKeys = listOf(
             KEY_DS_BUTTON_A,

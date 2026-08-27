@@ -9,6 +9,7 @@
     <string name="app_notification_channel_id" translatable="false">Azahar</string>
     <string name="app_notification_channel_description">Azahar 3DS emulator notifications</string>
     <string name="app_notification_running">Azahar is Running</string>
+    <string name="emulation_running_notification_text">Game running in background</string>
     <string name="app_game_install_description">Next, you will need to select an Applications Folder. Azahar will display all of the 3DS ROMs inside of the selected folder in the app.\n\nCIA ROMs, updates and DLC will need to be installed separately by clicking on the folder icon and selecting Install CIA.</string>
 
     <!-- Home Strings -->
@@ -532,6 +533,8 @@
     <string name="ds_swap_ab_description">Swap the A and B buttons, for controllers with a PlayStation-style face button layout.</string>
     <string name="ds_swap_xy">Swap X / Y</string>
     <string name="ds_swap_xy_description">Swap the X and Y buttons, for controllers with a PlayStation-style face button layout.</string>
+    <string name="ds_auto_savestate">Auto Save/Load State</string>
+    <string name="ds_auto_savestate_description">Automatically save your progress when closing a DS game and resume from it next time, regardless of the game\'s own save data.</string>
     <string name="ds_screen_scale">DS Screen Size</string>
     <string name="ds_screen_scale_description">Shrink both DS screens to leave more room for the on-screen controls.</string>
     <string name="emulation_configure_controls">Configure Controls</string>

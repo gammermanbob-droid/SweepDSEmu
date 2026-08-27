@@ -30,6 +30,7 @@ jmethodID GetPortraitScreenLayout();
 jmethodID GetExitEmulationActivity();
 jmethodID GetLaunchDsForwarder();
 jmethodID GetExitDsEmulationActivity();
+jmethodID GetNotifyDsFirstFrame();
 jmethodID GetRequestCameraPermission();
 jmethodID GetRequestMicPermission();
 jmethodID GetAddNetPlayMessage();

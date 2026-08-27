@@ -49,26 +49,43 @@ public:
         Stop();
         stop_requested_ = false;
         pause_requested_ = false;
+        first_frame_notified_ = false;
         rom_path_ = std::move(rom_path);
         run_thread_ = std::thread([this] { Run(); });
     }
 
-    void Stop() {
+    // auto_save_path empty = skip the auto-savestate (feature disabled, or
+    // this is a load failure with nothing worth preserving).
+    void Stop(const std::string& auto_save_path = {}) {
         if (!run_thread_.joinable()) {
             return;
         }
-        stop_requested_ = true;
-        {
-            std::lock_guard lock(pause_mutex_);
-            pause_requested_ = false;
+        if (!auto_save_path.empty()) {
+            RequestSaveState(auto_save_path);
+            // The Run() loop only consumes a pending save/load path once
+            // per frame, in between RunFrame() calls -- if stop_requested_
+            // were set immediately, the loop could observe it and exit
+            // before ever reaching that check, silently dropping this
+            // save. Wait for it to actually be consumed first. Bounded so
+            // a wedged emulation thread can't hang shutdown forever; one
+            // real frame at 60fps is ~16ms, so 2s is generous headroom.
+            for (int i = 0; i < 200; ++i) {
+                {
+                    std::lock_guard lock(state_path_mutex_);
+                    if (pending_save_path_.empty()) {
+                        break;
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
         }
-        pause_cv_.notify_all();
+        stop_requested_ = true;
+        pause_requested_ = false;
         run_thread_.join();
     }
 
     void Pause() {
-        std::lock_guard lock(pause_mutex_);
-        pause_requested_ = true;
+        pause_requested_.store(true, std::memory_order_relaxed);
         // Backgrounding is exactly when Android is most likely to kill
         // this process without warning -- flush now rather than only on
         // a clean Shutdown() that may never come. Consumed on the Run()
@@ -77,11 +94,7 @@ public:
     }
 
     void Unpause() {
-        {
-            std::lock_guard lock(pause_mutex_);
-            pause_requested_ = false;
-        }
-        pause_cv_.notify_all();
+        pause_requested_.store(false, std::memory_order_relaxed);
     }
 
     bool IsRunning() const {
@@ -126,10 +139,7 @@ public:
             ANativeWindow_release(top_surface_);
         }
         top_surface_ = surface;
-        if (top_surface_) {
-            ANativeWindow_setBuffersGeometry(top_surface_, kDsScreenWidth, kDsScreenHeight,
-                                             WINDOW_FORMAT_RGBA_8888);
-        }
+        ApplyTopSurfaceGeometry();
     }
 
     void SetBottomSurface(ANativeWindow* surface) {
@@ -144,16 +154,46 @@ public:
         }
     }
 
+    // Only called on the single-display (non-Thor/Odin) layout -- see
+    // NativeLibrary.dsSetScreenGap's doc comment. The mere fact this was
+    // ever called flips this session into combined-surface mode for good
+    // (the Kotlin side decides this once per Activity, same as
+    // usingSecondaryDisplay never changing mid-session).
+    void SetScreenGap(int gap_px) {
+        std::lock_guard lock(surface_mutex_);
+        combined_mode_ = true;
+        screen_gap_px_ = gap_px;
+        ApplyTopSurfaceGeometry();
+    }
+
 private:
     static constexpr int kDsScreenWidth = 256;
     static constexpr int kDsScreenHeight = 192;
 
+    // Caller must hold surface_mutex_.
+    void ApplyTopSurfaceGeometry() {
+        if (!top_surface_) {
+            return;
+        }
+        if (combined_mode_) {
+            ANativeWindow_setBuffersGeometry(top_surface_, kDsScreenWidth,
+                                             2 * kDsScreenHeight + screen_gap_px_,
+                                             WINDOW_FORMAT_RGBA_8888);
+        } else {
+            ANativeWindow_setBuffersGeometry(top_surface_, kDsScreenWidth, kDsScreenHeight,
+                                             WINDOW_FORMAT_RGBA_8888);
+        }
+    }
+
     void Run();
     static void BlitFrame(ANativeWindow* surface, const MergedCore::ScreenBuffer& buffer);
+    static void BlitCombinedFrame(ANativeWindow* surface, const MergedCore::ScreenBuffer& top,
+                                   const MergedCore::ScreenBuffer& bottom, int gap_px);
     void InitAudio(int sample_rate);
     void WriteAudio(const std::vector<int16_t>& samples);
     void ShutdownAudio();
     void NotifyExit(int result_code);
+    void NotifyFirstFrame();
 
     std::string rom_path_;
     std::thread run_thread_;
@@ -161,9 +201,8 @@ private:
     std::atomic<bool> reset_requested_{false};
     std::atomic<bool> flush_save_requested_{false};
 
-    std::mutex pause_mutex_;
-    std::condition_variable pause_cv_;
-    bool pause_requested_ = false;
+    std::atomic<bool> pause_requested_{false};
+    std::atomic<bool> first_frame_notified_{false};
 
     std::mutex input_mutex_;
     MergedCore::InputState input_;
@@ -175,6 +214,8 @@ private:
     std::mutex surface_mutex_;
     ANativeWindow* top_surface_ = nullptr;
     ANativeWindow* bottom_surface_ = nullptr;
+    bool combined_mode_ = false;
+    int screen_gap_px_ = 0;
 
     AAudioStream* audio_stream_ = nullptr;
     int audio_sample_rate_ = 0;
@@ -293,10 +334,67 @@ void DsSession::BlitFrame(ANativeWindow* surface, const MergedCore::ScreenBuffer
     ANativeWindow_unlockAndPost(surface);
 }
 
+// Draws both DS screens into one SurfaceView's buffer (top screen, then a
+// black gap, then the bottom screen) instead of using two separate
+// SurfaceViews. Two co-existing SurfaceViews in the same window is a known
+// Android compositor trigger for one of them getting stuck on its last
+// frame after the Activity is covered and uncovered again (e.g. by
+// Settings); a single surface has no second layer for the compositor to
+// lose track of. Only used on the single-display (non-Thor/Odin) layout --
+// see SetScreenGap.
+void DsSession::BlitCombinedFrame(ANativeWindow* surface, const MergedCore::ScreenBuffer& top,
+                                   const MergedCore::ScreenBuffer& bottom, int gap_px) {
+    if (!surface || top.width != kDsScreenWidth || top.height != kDsScreenHeight ||
+        top.pixels.size() != static_cast<size_t>(kDsScreenWidth) * kDsScreenHeight ||
+        bottom.width != kDsScreenWidth || bottom.height != kDsScreenHeight ||
+        bottom.pixels.size() != static_cast<size_t>(kDsScreenWidth) * kDsScreenHeight) {
+        return;
+    }
+    ANativeWindow_Buffer window_buffer;
+    if (ANativeWindow_lock(surface, &window_buffer, nullptr) != 0) {
+        return;
+    }
+
+    auto* dst = reinterpret_cast<uint8_t*>(window_buffer.bits);
+    const int stride_bytes = window_buffer.stride * 4;
+    // melonDS's software renderer packs pixels as B,G,R,A in memory (see
+    // upstream GPU_Soft.cpp), but the ANativeWindow buffer here is declared
+    // WINDOW_FORMAT_RGBA_8888 (R,G,B,A), so swap channels while copying --
+    // same as BlitFrame's single-surface case.
+    auto blit_screen = [&](const MergedCore::ScreenBuffer& screen, int dst_y_offset) {
+        const auto* src = reinterpret_cast<const uint8_t*>(screen.pixels.data());
+        const int copy_height =
+            std::min(kDsScreenHeight, window_buffer.height - dst_y_offset);
+        for (int y = 0; y < copy_height; ++y) {
+            const uint8_t* src_row = src + y * kDsScreenWidth * 4;
+            uint8_t* dst_row = dst + (dst_y_offset + y) * stride_bytes;
+            for (int x = 0; x < kDsScreenWidth; ++x) {
+                dst_row[x * 4 + 0] = src_row[x * 4 + 2];
+                dst_row[x * 4 + 1] = src_row[x * 4 + 1];
+                dst_row[x * 4 + 2] = src_row[x * 4 + 0];
+                dst_row[x * 4 + 3] = src_row[x * 4 + 3];
+            }
+        }
+    };
+    blit_screen(top, 0);
+    const int bottom_y_offset = kDsScreenHeight + gap_px;
+    for (int y = kDsScreenHeight; y < std::min(bottom_y_offset, window_buffer.height); ++y) {
+        std::memset(dst + y * stride_bytes, 0, kDsScreenWidth * 4);
+    }
+    blit_screen(bottom, bottom_y_offset);
+
+    ANativeWindow_unlockAndPost(surface);
+}
+
 void DsSession::NotifyExit(int result_code) {
     JNIEnv* env = IDCache::GetEnvForThread();
     env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(),
                               IDCache::GetExitDsEmulationActivity(), result_code);
+}
+
+void DsSession::NotifyFirstFrame() {
+    JNIEnv* env = IDCache::GetEnvForThread();
+    env->CallStaticVoidMethod(IDCache::GetNativeLibraryClass(), IDCache::GetNotifyDsFirstFrame());
 }
 
 void DsSession::Run() {
@@ -341,26 +439,31 @@ void DsSession::Run() {
     int frames_since_save_flush = 0;
 
     while (!stop_requested_.load(std::memory_order_relaxed)) {
-        // Checked *before* the pause-wait below: Pause() sets this from
-        // the JNI/UI thread the instant the app backgrounds, and if this
-        // check lived after the wait, a loop iteration that was already
-        // mid-frame when Pause() fired would go straight from finishing
-        // that frame into blocking on pause_cv_ without ever reaching
-        // it -- exactly the moment a save flush matters most, since
-        // Android can kill this process at any point once backgrounded.
         if (flush_save_requested_.exchange(false, std::memory_order_relaxed)) {
             core->FlushSave();
         }
 
-        {
-            std::unique_lock lock(pause_mutex_);
-            pause_cv_.wait(lock, [this] {
-                return !pause_requested_ || stop_requested_.load(std::memory_order_relaxed);
-            });
-        }
         if (stop_requested_.load(std::memory_order_relaxed)) {
             break;
         }
+
+        // Deliberately NOT gating RunFrame() itself on pause_requested_
+        // at all -- every attempt to slow down, skip, or discard
+        // RunFrame() calls while "paused" (a blocking wait; a 100ms
+        // poll loop that kept calling RunFrame() but discarded the
+        // output) reproduced a real freeze after returning from
+        // Settings: the picture on one screen would permanently stop
+        // updating, confirmed via a per-frame pixel checksum that went
+        // static at exactly that point, even though input kept arriving
+        // and RunFrame() itself never stopped being called. The desktop
+        // Qt frontend has no pause/resume concept for DS emulation at
+        // all -- it just keeps calling RunFrame() completely normally,
+        // always, matching what this now does -- and has never shown
+        // this bug. WriteAudio() below is still skipped while paused so
+        // audio doesn't keep playing in the background; BlitFrame()
+        // already safely no-ops on its own once Android has torn down
+        // the surfaces, so no separate skip is needed for it.
+        const bool is_paused = pause_requested_.load(std::memory_order_relaxed);
 
         {
             std::lock_guard lock(state_path_mutex_);
@@ -395,12 +498,26 @@ void DsSession::Run() {
         MergedCore::FrameOutput frame;
         core->RunFrame(input, frame);
 
+        // TEMPORARY diagnostic for the "bottom screen freezes/disappears
         {
             std::lock_guard lock(surface_mutex_);
-            BlitFrame(top_surface_, frame.top);
-            BlitFrame(bottom_surface_, frame.bottom);
+            if (combined_mode_) {
+                BlitCombinedFrame(top_surface_, frame.top, frame.bottom, screen_gap_px_);
+            } else {
+                BlitFrame(top_surface_, frame.top);
+                BlitFrame(bottom_surface_, frame.bottom);
+            }
         }
-        WriteAudio(frame.audio_samples);
+        // Tells the UI it can stop showing its "loading" screen -- one
+        // real frame has actually been drawn now, as opposed to the
+        // surfaces merely existing (which happens well before the ROM
+        // has finished loading and started producing real output).
+        if (!first_frame_notified_.exchange(true, std::memory_order_relaxed)) {
+            NotifyFirstFrame();
+        }
+        if (!is_paused) {
+            WriteAudio(frame.audio_samples);
+        }
 
         if (frame.powered_off) {
             // core->RunFrame() is a permanent no-op from here on (mirrors
@@ -458,21 +575,22 @@ JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsRun(JNIEnv* env
     GetSession().Start(GetJString(env, j_path));
 }
 
-JNIEXPORT void JNICALL
-Java_org_citra_citra_1emu_NativeLibrary_dsStopEmulation([[maybe_unused]] JNIEnv* env,
-                                                        [[maybe_unused]] jobject obj) {
-    GetSession().Stop();
+JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsStopEmulation(
+    JNIEnv* env, [[maybe_unused]] jobject obj, jstring j_auto_save_path) {
+    GetSession().Stop(j_auto_save_path ? GetJString(env, j_auto_save_path) : std::string());
 }
 
 JNIEXPORT void JNICALL
 Java_org_citra_citra_1emu_NativeLibrary_dsPauseEmulation([[maybe_unused]] JNIEnv* env,
                                                          [[maybe_unused]] jobject obj) {
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsPauseEmulation");
     GetSession().Pause();
 }
 
 JNIEXPORT void JNICALL
 Java_org_citra_citra_1emu_NativeLibrary_dsUnPauseEmulation([[maybe_unused]] JNIEnv* env,
                                                            [[maybe_unused]] jobject obj) {
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsUnPauseEmulation");
     GetSession().Unpause();
 }
 
@@ -501,21 +619,32 @@ JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsLoadState(JNIEn
 
 JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsTopSurfaceChanged(
     JNIEnv* env, [[maybe_unused]] jobject obj, jobject surf) {
+    // TEMPORARY diagnostic for the "bottom screen freezes after Settings"
+    // investigation -- remove once the root cause is confirmed.
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsTopSurfaceChanged surf={}", surf != nullptr);
     GetSession().SetTopSurface(surf ? ANativeWindow_fromSurface(env, surf) : nullptr);
+}
+
+JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsSetScreenGap(
+    [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj, jint gap_px) {
+    GetSession().SetScreenGap(gap_px);
 }
 
 JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsBottomSurfaceChanged(
     JNIEnv* env, [[maybe_unused]] jobject obj, jobject surf) {
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsBottomSurfaceChanged surf={}", surf != nullptr);
     GetSession().SetBottomSurface(surf ? ANativeWindow_fromSurface(env, surf) : nullptr);
 }
 
 JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsTopSurfaceDestroyed(
     [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsTopSurfaceDestroyed");
     GetSession().SetTopSurface(nullptr);
 }
 
 JNIEXPORT void JNICALL Java_org_citra_citra_1emu_NativeLibrary_dsBottomSurfaceDestroyed(
     [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj) {
+    LOG_INFO(Frontend, "DS SURFACE DIAG: dsBottomSurfaceDestroyed");
     GetSession().SetBottomSurface(nullptr);
 }
 

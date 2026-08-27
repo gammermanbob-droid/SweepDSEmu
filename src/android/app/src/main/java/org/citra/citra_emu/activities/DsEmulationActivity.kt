@@ -4,8 +4,10 @@
 
 package org.citra.citra_emu.activities
 
+import android.content.Intent
 import android.graphics.Rect
 import android.os.Bundle
+import android.os.Process
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -35,6 +37,7 @@ import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.overlay.DsButtonOverlayView
 import org.citra.citra_emu.overlay.DsDpadView
+import org.citra.citra_emu.services.EmulationForegroundService
 import org.citra.citra_emu.utils.ControllerMappingHelper
 
 /**
@@ -58,6 +61,14 @@ class DsEmulationActivity : AppCompatActivity() {
     private var isRunning = false
     private var isPaused = false
     private var overlayVisible = true
+
+    // Set by layoutDsScreens() whenever !usingSecondaryDisplay -- the
+    // bottom screen's own top-edge offset and height within the single
+    // combined surfaceDsTop surface, in that view's own pixel space, so
+    // onCombinedScreenTouch() can tell a tap on the bottom (touch) screen
+    // apart from one landing on the top screen or the gap between them.
+    private var combinedBottomOffsetPx = 0
+    private var combinedScreenHeightPx = 1
 
     // True once a genuine second physical display is actually in use for
     // the bottom screen (dual-screen handhelds like the AYN Thor or Odin
@@ -96,17 +107,50 @@ class DsEmulationActivity : AppCompatActivity() {
             onTouchMoved = { x, y -> onSecondaryDisplayTouch(x, y, true) }
         )
         secondaryDisplayManager.updateDisplay()
-        if (usingSecondaryDisplay) {
-            // The real second display's own Presentation provides the
-            // bottom screen now -- the embedded one would just be a
-            // redundant, confusing extra copy. Let the top screen use
-            // the whole primary display instead.
-            binding.surfaceDsBottom.visibility = View.GONE
-        }
-
         binding.surfaceDsTop.holder.addCallback(TopSurfaceCallback())
-        binding.surfaceDsBottom.holder.addCallback(BottomSurfaceCallback())
-        binding.surfaceDsBottom.setOnTouchListener { _, event -> onBottomScreenTouch(event) }
+
+        if (usingSecondaryDisplay) {
+            // A genuine second physical display (Thor/Odin-style hardware)
+            // already provides the bottom screen through its own
+            // Presentation surface -- the embedded surfaceDsBottom would
+            // just be a redundant, confusing extra copy. Let the top
+            // screen use the primary display on its own. Both screens go
+            // to genuinely separate physical displays/windows here, so
+            // there's no same-window z-order ambiguity between them to
+            // resolve either way -- setZOrderMediaOverlay kept purely for
+            // parity with how this path behaved before the single-surface
+            // fix below existed, not because it's known to still matter.
+            binding.surfaceDsTop.setZOrderMediaOverlay(true)
+            binding.surfaceDsBottom.visibility = View.GONE
+            binding.surfaceDsBottom.setZOrderMediaOverlay(true)
+            binding.surfaceDsBottom.holder.addCallback(BottomSurfaceCallback())
+            binding.surfaceDsBottom.setOnTouchListener { _, event -> onBottomScreenTouch(event) }
+        } else {
+            // Normal single-display phones/tablets: both DS screens are
+            // blitted into surfaceDsTop alone (top screen, then bottom,
+            // stacked with a gap -- see layoutDsScreens/dsSetScreenGap)
+            // instead of using two separate SurfaceViews. Two co-existing
+            // SurfaceViews in one window is a known Android compositor
+            // trigger for one of them getting stuck on its last frame
+            // after the Activity is covered and uncovered again (e.g. by
+            // Settings) -- confirmed via native-side logging that fresh
+            // buffers kept getting posted successfully to the "frozen"
+            // surface the whole time, meaning the app side was already
+            // doing everything right and no combination of Z-ordering,
+            // view reattachment, or window translucency fixed it. A
+            // single surface has no second layer for the compositor to
+            // lose track of, so unlike the branch above this deliberately
+            // does NOT call setZOrderMediaOverlay -- that flag promotes
+            // the surface's content above every regular View in this
+            // window (including ds_loading_overlay), which silently hid
+            // the loading screen behind the DS surface's own blank
+            // initial buffer. SurfaceView's real default (content behind
+            // the window, normal Views composite in front of it) is
+            // exactly what's wanted here now that there's only one.
+            // surfaceDsBottom stays unused/hidden here.
+            binding.surfaceDsBottom.visibility = View.GONE
+            binding.surfaceDsTop.setOnTouchListener { _, event -> onCombinedScreenTouch(event) }
+        }
 
         buildButtonOverlay()
         setUpInGameMenu()
@@ -173,13 +217,39 @@ class DsEmulationActivity : AppCompatActivity() {
             return
         }
         isRunning = true
-        runThread = Thread({ NativeLibrary.dsRun(romPath) }, "DsEmulation").also {
+        startForegroundService(
+            Intent(this, EmulationForegroundService::class.java).apply {
+                putExtra(EmulationForegroundService.EXTRA_TITLE, gameTitleFromRomPath())
+                putExtra(
+                    EmulationForegroundService.EXTRA_REOPEN_INTENT,
+                    Intent(this@DsEmulationActivity, DsEmulationActivity::class.java).apply {
+                        putExtra(EXTRA_DS_ROM_PATH, romPath)
+                    }
+                )
+            }
+        )
+        runThread = Thread({
+            // Some OEM power managers (e.g. Samsung's background process
+            // throttling) can drop a backgrounded app's threads to a lower
+            // CPU scheduling class, which can desync cycle-accurate emulator
+            // timing even though the thread keeps getting scheduled at all.
+            // THREAD_PRIORITY_URGENT_AUDIO is the standard real-time class
+            // media/audio engines use to stay exempt from that throttling.
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+            NativeLibrary.dsRun(romPath)
+        }, "DsEmulation").also {
             // melonDS's ARMJIT compiler constructor generates a large
             // number of code trampolines with heavy local register/branch
             // bookkeeping (same reasoning as DSEmuThread's setStackSize on
             // the Qt frontend) -- the platform default thread stack can be
             // too small for it.
             it.start()
+        }
+        if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true)) {
+            val file = autoSaveStateFile()
+            if (file.exists()) {
+                NativeLibrary.dsLoadState(file.absolutePath)
+            }
         }
     }
 
@@ -188,9 +258,20 @@ class DsEmulationActivity : AppCompatActivity() {
             return
         }
         isRunning = false
-        NativeLibrary.dsStopEmulation()
+        val autoSavePath = if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true)) {
+            autoSaveStateFile().absolutePath
+        } else {
+            ""
+        }
+        NativeLibrary.dsStopEmulation(autoSavePath)
         runThread?.join()
         runThread = null
+        stopService(Intent(this, EmulationForegroundService::class.java))
+    }
+
+    /** Called from [NativeLibrary.notifyDsFirstFrame] once real output exists to show. */
+    fun hideLoadingScreen() {
+        binding.dsLoadingOverlay.visibility = View.GONE
     }
 
     /** Called from [NativeLibrary.exitDsEmulationActivity] on load failure. */
@@ -250,6 +331,37 @@ class DsEmulationActivity : AppCompatActivity() {
     }
 
     // --- Touch (stylus) input on the bottom screen ---
+
+    /**
+     * Used instead of [onBottomScreenTouch] on the single-display (non-
+     * Thor/Odin) layout, where both DS screens share surfaceDsTop as one
+     * combined surface -- see onCreate's doc comment. Real DS hardware
+     * only accepts touch on the bottom screen, so taps landing in the top
+     * screen or the gap between them are ignored.
+     */
+    private fun onCombinedScreenTouch(event: MotionEvent): Boolean {
+        val view = binding.surfaceDsTop
+        if (view.width <= 0 || view.height <= 0) {
+            return false
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                if (event.y < combinedBottomOffsetPx) {
+                    return false
+                }
+                val scaleX = kDsScreenWidth.toFloat() / view.width
+                val scaleY = kDsScreenHeight.toFloat() / combinedScreenHeightPx
+                val x = (event.x * scaleX).toInt().coerceIn(0, kDsScreenWidth - 1)
+                val y = ((event.y - combinedBottomOffsetPx) * scaleY).toInt()
+                    .coerceIn(0, kDsScreenHeight - 1)
+                NativeLibrary.dsOnTouchEvent(x, y, true)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                NativeLibrary.dsOnTouchEvent(0, 0, false)
+            }
+        }
+        return true
+    }
 
     private fun onBottomScreenTouch(event: MotionEvent): Boolean {
         val view = binding.surfaceDsBottom
@@ -350,10 +462,15 @@ class DsEmulationActivity : AppCompatActivity() {
     // This computes an actual 4:3 rect for each screen instead, with a
     // gap between them approximating a real DS's hinge (SCREEN_GAP_FRACTION
     // -- a deliberate visual approximation scaled to the window, not a
-    // claimed precise hardware measurement) and exposes the leftover
-    // width on either side as square "housing zones" the button overlay
-    // (see DsButtonOverlayView.setHousingZones) defaults its buttons
-    // into, so they land beside the screens instead of on top of them.
+    // claimed precise hardware measurement), full container width, and
+    // exposes the strip of leftover height below both screens as two
+    // side-by-side "housing zones" the button overlay (see
+    // DsButtonOverlayView.setHousingZones) defaults its buttons into --
+    // matching the official melonDS Android app's own default layout
+    // rather than the side-by-side-with-the-screens arrangement this used
+    // to have, which gave up screen width permanently to make room for
+    // buttons even on windows with plenty of spare height to put them in
+    // below instead.
     private var lastContainerW = -1
     private var lastContainerH = -1
 
@@ -372,45 +489,67 @@ class DsEmulationActivity : AppCompatActivity() {
 
     private fun layoutDsScreens(containerW: Int, containerH: Int) {
         val gapPx = (containerH * SCREEN_GAP_FRACTION).toInt()
-        // Caps each screen's width so there's always at least some
-        // housing zone on each side even on an unusually wide/short
-        // window -- on a typical phone in landscape this cap doesn't
-        // actually kick in; height ends up the limiting dimension and
-        // there's plenty of leftover width regardless.
-        val maxScreenW = (containerW * MAX_SCREEN_WIDTH_FRACTION).toInt()
-        val heightConstrainedW =
-            ((containerH - gapPx) / 2f * kDsScreenWidth / kDsScreenHeight).toInt()
+        // Matches the official melonDS Android app's own default layout
+        // (confirmed by direct pixel measurement against its APK on this
+        // same device): both DS screens run the *full* container width,
+        // stacked vertically, with all on-screen controls living in
+        // whatever strip is left below them -- not beside the screens in
+        // dedicated side columns like this activity used to do. That
+        // older side-by-side layout gave up screen width permanently to
+        // house the D-pad/buttons even when the window had plenty of
+        // spare height to put them in instead.
+        val reservedControlsH = (containerH * CONTROLS_STRIP_HEIGHT_FRACTION).toInt()
+        val fullWidthScreenH =
+            (containerW.toFloat() * kDsScreenHeight / kDsScreenWidth).toInt()
+        val heightConstrainedScreenH = ((containerH - reservedControlsH - gapPx) / 2f).toInt()
         // User-configurable shrink (Settings.KEY_DS_SCREEN_SCALE, 50-100%,
         // default 100) on top of the auto-fit size above -- that size is
-        // already the largest that fits the window, so this only ever
-        // makes the screens smaller, freeing up room for the on-screen
-        // controls rather than ever overflowing the container.
+        // already the largest that fits the window while leaving the
+        // controls strip its minimum height, so this only ever makes the
+        // screens smaller (and the controls strip correspondingly
+        // taller), never overflows the container.
         val scalePercent = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100).coerceIn(50, 100)
-        val screenW = (minOf(heightConstrainedW, maxScreenW) * scalePercent / 100).coerceAtLeast(1)
-        val screenH = (screenW.toFloat() * kDsScreenHeight / kDsScreenWidth).toInt().coerceAtLeast(1)
+        val screenH = (minOf(fullWidthScreenH, heightConstrainedScreenH) * scalePercent / 100)
+            .coerceAtLeast(1)
+        val screenW = (screenH.toFloat() * kDsScreenWidth / kDsScreenHeight).toInt().coerceAtLeast(1)
 
         val totalContentH = 2 * screenH + gapPx
-        val topInset = ((containerH - totalContentH) / 2).coerceAtLeast(0)
+        val topInset = 0
         val screenX = (containerW - screenW) / 2
 
-        binding.surfaceDsTop.layoutParams = FrameLayout.LayoutParams(screenW, screenH).apply {
-            leftMargin = screenX
-            topMargin = topInset
-        }
-        binding.surfaceDsBottom.layoutParams = FrameLayout.LayoutParams(screenW, screenH).apply {
-            leftMargin = screenX
-            topMargin = topInset + screenH + gapPx
+        if (usingSecondaryDisplay) {
+            binding.surfaceDsTop.layoutParams = FrameLayout.LayoutParams(screenW, screenH).apply {
+                leftMargin = screenX
+                topMargin = topInset
+            }
+        } else {
+            // Both screens live in one surface here (see onCreate's doc
+            // comment on why) -- size it to the union of both screens plus
+            // the gap between them, and tell native code where that gap
+            // falls in its own buffer's pixel space so it can blit the top
+            // screen, a black gap, then the bottom screen into one frame.
+            binding.surfaceDsTop.layoutParams =
+                FrameLayout.LayoutParams(screenW, totalContentH).apply {
+                    leftMargin = screenX
+                    topMargin = topInset
+                }
+            val gapBufferPx = Math.round(gapPx * kDsScreenWidth / screenW.toFloat())
+            NativeLibrary.dsSetScreenGap(gapBufferPx)
+            combinedBottomOffsetPx = screenH + gapPx
+            combinedScreenHeightPx = screenH
         }
 
-        // "A square" per housing zone, as close as the available gutter
-        // allows -- side length is whichever is smaller of the leftover
-        // width and the full container height, centered vertically.
-        val zoneSide = screenX.coerceAtMost(containerH)
-        val zoneTop = (containerH - zoneSide) / 2
-        val leftZone = Rect(0, zoneTop, zoneSide, zoneTop + zoneSide)
-        val rightZone = Rect(containerW - zoneSide, zoneTop, containerW, zoneTop + zoneSide)
+        // The whole strip below both screens, split into a left half for
+        // the D-pad and a right half for the face-button diamond --
+        // matches melonDS's own default arrangement (both halves are
+        // wider than tall on most phones, so DsButtonOverlayView's own
+        // zone.width().coerceAtMost(zone.height()) sizing naturally keys
+        // off the height here without any special-casing).
+        val controlsTop = totalContentH
+        val leftZone = Rect(0, controlsTop, containerW / 2, containerH)
+        val rightZone = Rect(containerW / 2, controlsTop, containerW, containerH)
 
-        val dpadSize = (zoneSide * 0.85f).toInt()
+        val dpadSize = (leftZone.height().coerceAtMost(leftZone.width()) * 0.65f).toInt()
         dsDpadView.layoutParams = FrameLayout.LayoutParams(dpadSize, dpadSize).apply {
             leftMargin = leftZone.left + (leftZone.width() - dpadSize) / 2
             topMargin = leftZone.top + (leftZone.height() - dpadSize) / 2
@@ -545,6 +684,8 @@ class DsEmulationActivity : AppCompatActivity() {
         dir.mkdirs()
         return dir
     }
+
+    private fun autoSaveStateFile(): File = File(saveStateDir(), "auto.state")
 
     private fun showSaveStateMenu() {
         val popupMenu = PopupMenu(this, binding.inGameMenu.findViewById(R.id.menu_emulation_savestates))
@@ -875,10 +1016,16 @@ class DsEmulationActivity : AppCompatActivity() {
         private const val kSaveStateSlotCount = 4
 
         // See layoutDsScreens()'s own doc comment -- deliberate visual
-        // approximations of a real DS's hinge gap and a sensible
-        // maximum screen width, not precise hardware measurements.
+        // approximation of a real DS's hinge gap, not a precise hardware
+        // measurement.
         private const val SCREEN_GAP_FRACTION = 0.05f
-        private const val MAX_SCREEN_WIDTH_FRACTION = 0.72f
+        // Minimum height reserved for the controls strip below both
+        // screens, as a fraction of the container's own height -- both
+        // screens shrink (see layoutDsScreens) rather than ever eating
+        // into this. ~0.28 matches the official melonDS Android app's own
+        // default layout, measured directly against its APK running on
+        // this same device.
+        private const val CONTROLS_STRIP_HEIGHT_FRACTION = 0.28f
 
         // F12 by default on the Qt frontend (DSControlsConfig); there's no
         // direct KeyEvent equivalent guaranteed present on every Android

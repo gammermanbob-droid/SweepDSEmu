@@ -1020,6 +1020,27 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
             }
             add(SwitchSetting(swapXY, R.string.ds_swap_xy, R.string.ds_swap_xy_description))
 
+            val autoSavestate: AbstractBooleanSetting = object : AbstractBooleanSetting {
+                override var boolean: Boolean
+                    get() = preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true)
+                    set(value) {
+                        preferences.edit().putBoolean(Settings.KEY_DS_AUTO_SAVESTATE, value).apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true).toString()
+                override val defaultValue: Any = true
+            }
+            add(
+                SwitchSetting(
+                    autoSavestate,
+                    R.string.ds_auto_savestate,
+                    R.string.ds_auto_savestate_description
+                )
+            )
+
             val screenScale: AbstractIntSetting = object : AbstractIntSetting {
                 override var int: Int
                     get() = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100)

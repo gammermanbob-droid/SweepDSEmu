@@ -222,7 +222,9 @@ object NativeLibrary {
     // jni/ds_native.cpp) and needs its own top/bottom surfaces since a DS
     // session can run independently of any 3DS session.
     external fun dsRun(path: String)
-    external fun dsStopEmulation()
+    // autoSavePath empty = skip the auto-savestate this stop (feature
+    // disabled, or nothing worth preserving yet).
+    external fun dsStopEmulation(autoSavePath: String = "")
     external fun dsPauseEmulation()
     external fun dsUnPauseEmulation()
     external fun dsIsRunning(): Boolean
@@ -233,6 +235,13 @@ object NativeLibrary {
     external fun dsTopSurfaceDestroyed()
     external fun dsBottomSurfaceChanged(surf: Surface)
     external fun dsBottomSurfaceDestroyed()
+    // Only used on the single-display (non-Thor/Odin) layout, where both
+    // DS screens are blitted into one combined SurfaceView (surface_ds_top)
+    // to avoid a compositor bug where two co-existing SurfaceViews in one
+    // window can get stuck on their last frame after the Activity is
+    // covered and uncovered (e.g. by Settings) -- see DsEmulationActivity's
+    // layoutDsScreens()/CombinedSurfaceCallback doc comments.
+    external fun dsSetScreenGap(gapPx: Int)
 
     /**
      * Presses or releases one DS button. [buttonBit] is one of
@@ -554,6 +563,22 @@ object NativeLibrary {
                 resultCode == 1 -> dsEmulationActivity.showConsolePoweredOff()
                 else -> dsEmulationActivity.finish()
             }
+        }
+    }
+
+    /**
+     * Called once the DS emulation thread has actually drawn a real frame
+     * -- as opposed to merely having a surface to draw into, which
+     * happens well before the ROM (and, for homebrew, its SD card image)
+     * has finished loading. Lets the UI stop showing its "loading" screen
+     * at the right moment instead of a black screen the whole time.
+     */
+    @Keep
+    @JvmStatic
+    fun notifyDsFirstFrame() {
+        val dsEmulationActivity = sDsEmulationActivity.get() ?: return
+        dsEmulationActivity.runOnUiThread {
+            dsEmulationActivity.hideLoadingScreen()
         }
     }
 

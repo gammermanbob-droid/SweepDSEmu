@@ -32,6 +32,7 @@ static jmethodID s_portrait_screen_layout;
 static jmethodID s_exit_emulation_activity;
 static jmethodID s_launch_ds_forwarder;
 static jmethodID s_exit_ds_emulation_activity;
+static jmethodID s_notify_ds_first_frame;
 static jmethodID s_request_camera_permission;
 static jmethodID s_request_mic_permission;
 static jmethodID s_add_netplay_message;
@@ -107,6 +108,10 @@ jmethodID GetLaunchDsForwarder() {
 
 jmethodID GetExitDsEmulationActivity() {
     return s_exit_ds_emulation_activity;
+}
+
+jmethodID GetNotifyDsFirstFrame() {
+    return s_notify_ds_first_frame;
 }
 
 jmethodID GetRequestCameraPermission() {
@@ -204,6 +209,8 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
                                                     "(Ljava/lang/String;)V");
     s_exit_ds_emulation_activity =
         env->GetStaticMethodID(s_native_library_class, "exitDsEmulationActivity", "(I)V");
+    s_notify_ds_first_frame =
+        env->GetStaticMethodID(s_native_library_class, "notifyDsFirstFrame", "()V");
     s_request_camera_permission =
         env->GetStaticMethodID(s_native_library_class, "requestCameraPermission", "()Z");
     s_request_mic_permission =

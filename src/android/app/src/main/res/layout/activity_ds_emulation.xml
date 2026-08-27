@@ -54,6 +54,39 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <!-- Shown until NativeLibrary.notifyDsFirstFrame() fires (see
+             ds_native.cpp); otherwise the screens are just plain black
+             from when their surfaces are created until the ROM (and, for
+             homebrew, its SD card image) actually finishes loading and
+             starts producing real frames, which can take a noticeable
+             moment. clickable/focusable so it also blocks stray taps on
+             the button overlay underneath while loading. -->
+        <LinearLayout
+            android:id="@+id/ds_loading_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ProgressBar
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                style="?android:attr/progressBarStyle" />
+
+            <TextView
+                android:id="@+id/text_ds_loading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/loading"
+                android:textColor="@android:color/white"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
     </FrameLayout>
 
     <com.google.android.material.navigation.NavigationView

@@ -41,7 +41,7 @@ import org.citra.citra_emu.features.settings.model.Settings
  * DsEmulationActivity.layoutDsScreens() -- rather than fixed corner
  * margins, since the DS screens are no longer stretched to fill the
  * whole display and buttons need to default into whatever's actually
- * left over on either side instead of sitting on top of the screens.
+ * left over below both screens instead of sitting on top of them.
  */
 class DsButtonOverlayView @JvmOverloads constructor(
     context: Context,
@@ -51,12 +51,13 @@ class DsButtonOverlayView @JvmOverloads constructor(
     private enum class Zone {
         LEFT, RIGHT,
         // L/R/Select/Start default to small corner floaters against the
-        // *full* overlay (like the HOME button always has), not housed
-        // inside the left/right squares -- those squares are sized for
-        // the d-pad and face-button diamond alone; fitting four more
-        // buttons in without overlapping either of those would mean
-        // shrinking everything to the point of being fiddly to tap.
-        FULL
+        // *whole controls strip* (the union of LEFT and RIGHT -- the
+        // entire leftover area below both DS screens), not housed inside
+        // the left/right halves alone -- those halves are sized for the
+        // d-pad and face-button diamond alone; fitting four more buttons
+        // in without overlapping either of those would mean shrinking
+        // everything to the point of being fiddly to tap.
+        CONTROLS
     }
 
     private data class Spec(
@@ -65,10 +66,9 @@ class DsButtonOverlayView @JvmOverloads constructor(
         val normalRes: Int,
         val pressedRes: Int,
         val zone: Zone,
-        // Fraction of the reference area's own (square, for LEFT/RIGHT;
-        // shorter side, for FULL) side length -- scales with whatever
-        // room is actually available instead of a fixed dp size, since
-        // both zone size and window size vary a lot.
+        // Fraction of the reference area's own shorter side length --
+        // scales with whatever room is actually available instead of a
+        // fixed dp size, since both zone size and window size vary a lot.
         val sizeFraction: Float,
         // Fraction of the reference area's width/height for the
         // button's top-left corner, 0..1 -- e.g. (0.5f - sizeFraction/2, 0f)
@@ -78,28 +78,23 @@ class DsButtonOverlayView @JvmOverloads constructor(
 
     private val specs: List<Spec> = listOf(
         Spec(NativeLibrary.DsButtonType.BUTTON_L, "ds_overlay_l", R.drawable.button_l,
-            R.drawable.button_l_pressed, Zone.FULL, 0.09f) { s -> Pair(0.02f, 0.02f) },
+            R.drawable.button_l_pressed, Zone.CONTROLS, 0.15f) { s -> Pair(0.02f, 0.02f) },
         Spec(NativeLibrary.DsButtonType.BUTTON_R, "ds_overlay_r", R.drawable.button_r,
-            R.drawable.button_r_pressed, Zone.FULL, 0.09f) { s -> Pair(1f - 0.02f - s, 0.02f) },
+            R.drawable.button_r_pressed, Zone.CONTROLS, 0.15f) { s -> Pair(1f - 0.02f - s, 0.02f) },
         Spec(NativeLibrary.DsButtonType.BUTTON_SELECT, "ds_overlay_select", R.drawable.button_select,
-            R.drawable.button_select_pressed, Zone.FULL, 0.08f) { s -> Pair(0.02f, 1f - 0.02f - s) },
+            R.drawable.button_select_pressed, Zone.CONTROLS, 0.12f) { s -> Pair(0.02f, 1f - 0.02f - s) },
         Spec(NativeLibrary.DsButtonType.BUTTON_START, "ds_overlay_start", R.drawable.button_start,
-            R.drawable.button_start_pressed, Zone.FULL, 0.08f) { s -> Pair(1f - 0.02f - s, 1f - 0.02f - s) },
-        // Face buttons: a diamond centered in the right zone, same
-        // relative Y-top/A-left/B-right/X-bottom shape the very first
-        // version of this overlay used (see git history) -- kept as-is
-        // rather than "corrected" to a real DS's actual X-top/Y-left/
-        // A-right/B-bottom layout, since changing established button
-        // positions wasn't asked for and would just retrain muscle memory
-        // for no real benefit.
+            R.drawable.button_start_pressed, Zone.CONTROLS, 0.12f) { s -> Pair(1f - 0.02f - s, 1f - 0.02f - s) },
+        // Face buttons: a diamond centered in the right zone, matching a
+        // real DS's actual X-top/Y-left/A-right/B-bottom layout.
         Spec(NativeLibrary.DsButtonType.BUTTON_Y, "ds_overlay_y", R.drawable.button_y,
-            R.drawable.button_y_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - s / 2f, 0.5f - 0.22f - s / 2f) },
+            R.drawable.button_y_pressed, Zone.RIGHT, 0.22f) { s -> Pair(0.5f - 0.22f - s / 2f, 0.5f - s / 2f) },
         Spec(NativeLibrary.DsButtonType.BUTTON_A, "ds_overlay_a", R.drawable.button_a,
-            R.drawable.button_a_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - 0.22f - s / 2f, 0.5f - s / 2f) },
+            R.drawable.button_a_pressed, Zone.RIGHT, 0.22f) { s -> Pair(0.5f + 0.22f - s / 2f, 0.5f - s / 2f) },
         Spec(NativeLibrary.DsButtonType.BUTTON_B, "ds_overlay_b", R.drawable.button_b,
-            R.drawable.button_b_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f + 0.22f - s / 2f, 0.5f - s / 2f) },
+            R.drawable.button_b_pressed, Zone.RIGHT, 0.22f) { s -> Pair(0.5f - s / 2f, 0.5f + 0.22f - s / 2f) },
         Spec(NativeLibrary.DsButtonType.BUTTON_X, "ds_overlay_x", R.drawable.button_x,
-            R.drawable.button_x_pressed, Zone.RIGHT, 0.30f) { s -> Pair(0.5f - s / 2f, 0.5f + 0.22f - s / 2f) }
+            R.drawable.button_x_pressed, Zone.RIGHT, 0.22f) { s -> Pair(0.5f - s / 2f, 0.5f - 0.22f - s / 2f) }
     )
 
     private val prefs: SharedPreferences =
@@ -204,20 +199,17 @@ class DsButtonOverlayView @JvmOverloads constructor(
         rightZone = right
         zonesKnown = true
 
-        // FULL specs (L/R/Select/Start) reference the whole overlay's
-        // own bounds rather than either housing square -- this view is
-        // already MATCH_PARENT, so its own width/height (available once
-        // it's been laid out at least once, which it always has been by
-        // the time setHousingZones() first runs from layoutDsScreens())
-        // is exactly that reference area.
-        val fullZone = Rect(0, 0, width, height)
+        // CONTROLS specs (L/R/Select/Start) reference the whole controls
+        // strip -- the union of the left and right halves -- rather than
+        // either half alone.
+        val controlsZone = Rect(leftZone.left, leftZone.top, rightZone.right, rightZone.bottom)
 
         buttons.clear()
         for (spec in specs) {
             val zone = when (spec.zone) {
                 Zone.LEFT -> leftZone
                 Zone.RIGHT -> rightZone
-                Zone.FULL -> fullZone
+                Zone.CONTROLS -> controlsZone
             }
             val defaultSizePx = (zone.width().coerceAtMost(zone.height()) * spec.sizeFraction).toInt()
             val savedSize = prefs.getFloat("${spec.prefKey}_size", Float.NaN)
