@@ -90,6 +90,12 @@ class EmulationActivity : AppCompatActivity() {
     private var isEmulationRunning: Boolean = false
     private var isEmulationReady: Boolean = false
 
+    // Set once the currently-loaded game is known -- lets onNewIntent tell
+    // "the user picked a different game while one was open" (should
+    // restart) apart from "this exact game's own launch intent got
+    // redelivered" (should not), see onNewIntent's doc comment.
+    private var currentGamePath: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
@@ -162,10 +168,29 @@ class EmulationActivity : AppCompatActivity() {
         }
 
         NativeLibrary.playTimeManagerStart(game.titleId)
+        currentGamePath = game.path
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        val newGame = intent.extras?.let { extras ->
+            BundleCompat.getParcelable(extras, "game", Game::class.java)
+        }
+        // This Activity is singleTop, so its own launch intent can get
+        // redelivered here instead of going through onCreate -- notably
+        // when EmulationForegroundService's "tap to return" notification
+        // is tapped while this exact game is already running. That used
+        // to unconditionally stop and reload emulation below, restarting
+        // the game from scratch even though nothing actually changed.
+        // Only treat this as "the user picked a different game" -- which
+        // does need a real reload -- when the incoming game differs from
+        // the one already running.
+        if (newGame != null && isEmulationRunning && newGame.path == currentGamePath) {
+            setIntent(intent)
+            return
+        }
+
         setIntent(intent)
 
         NativeLibrary.stopEmulation()
@@ -176,11 +201,9 @@ class EmulationActivity : AppCompatActivity() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
         emulationViewModel.setEmulationStarted(false)
 
-        val game = intent.extras?.let { extras ->
-            BundleCompat.getParcelable(extras, "game", Game::class.java)
-        }
-        if (game != null) {
-            NativeLibrary.playTimeManagerStart(game.titleId)
+        if (newGame != null) {
+            NativeLibrary.playTimeManagerStart(newGame.titleId)
+            currentGamePath = newGame.path
         }
 
         val navHostFragment =

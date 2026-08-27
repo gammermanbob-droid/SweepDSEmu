@@ -80,6 +80,7 @@ import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.model.Game
+import org.citra.citra_emu.services.EmulationForegroundService
 import org.citra.citra_emu.utils.AmiiboDatabase.Companion.amiibos
 import org.citra.citra_emu.utils.AmiiboDatabase.Companion.amiibos_series
 import org.citra.citra_emu.utils.AmiiboUsageDatabase
@@ -559,6 +560,17 @@ class EmulationFragment :
             return
         }
 
+        // True fresh start (native side isn't already running) -- keep the
+        // process alive across brief backgrounding from here on, same
+        // reasoning as DsEmulationActivity's own use of this service (see
+        // EmulationForegroundService's doc comment).
+        requireContext().startForegroundService(
+            Intent(requireContext(), EmulationForegroundService::class.java).apply {
+                putExtra(EmulationForegroundService.EXTRA_TITLE, game.title)
+                putExtra(EmulationForegroundService.EXTRA_REOPEN_INTENT, game.launchIntent)
+            }
+        )
+
         if (DirectoryInitialization.areCitraDirectoriesReady()) {
             emulationState.run(emulationActivity.isActivityRecreated)
         } else {
@@ -582,6 +594,7 @@ class EmulationFragment :
     override fun onDestroy() {
         if (::emulationState.isInitialized && requireActivity().isFinishing) {
             emulationState.stop()
+            requireContext().stopService(Intent(requireContext(), EmulationForegroundService::class.java))
         }
         EmulationLifecycleUtil.removeHook(onPause)
         EmulationLifecycleUtil.removeHook(onShutdown)
@@ -1844,6 +1857,21 @@ class EmulationFragment :
 
         private fun runWithValidSurface() {
             NativeLibrary.surfaceChanged(surface!!)
+            // The native core can shut itself down on its own (e.g. the
+            // guest application requests to close itself) independently of
+            // our own pause/stop calls, while this class still thinks it's
+            // merely paused -- previously masked because Android's
+            // background process killer usually took the whole process
+            // down before this could surface, resetting everything to a
+            // clean STOPPED state on the next cold start. Now that
+            // EmulationForegroundService keeps the process alive across
+            // brief backgrounding, that race can actually happen: treat a
+            // dead core as stopped so this does a genuine restart instead
+            // of just flipping the pause flag on a thread that already
+            // exited, which is what a black screen on resume looks like.
+            if (state != State.STOPPED && !NativeLibrary.isRunning()) {
+                state = State.STOPPED
+            }
             when (state) {
                 State.STOPPED -> {
                     Thread({

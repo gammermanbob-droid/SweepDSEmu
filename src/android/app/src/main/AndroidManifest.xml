@@ -42,6 +42,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- EmulationForegroundService keeps a running 3DS/DS session alive
+         while its Activity is merely backgrounded, so briefly switching
+         away and back doesn't lose emulation state to Android's
+         background process killer; see that class's doc comment. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- Lets SweepDSEmuNDSBrewer (a separate, same-signature-only APK,
          see InstallCiaBridgeActivity) hand off a freshly built forwarder
@@ -98,6 +104,11 @@
             android:theme="@style/Theme.Citra.Main"
             android:launchMode="singleTop"
             android:screenOrientation="portrait" />
+
+        <service
+            android:name="org.citra.citra_emu.services.EmulationForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <activity
             android:name="org.citra.citra_emu.activities.EmulationActivity"
