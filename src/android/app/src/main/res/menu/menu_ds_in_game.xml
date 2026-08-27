@@ -24,6 +24,11 @@
         android:title="@string/emulation_overlay_options" />
 
     <item
+        android:id="@+id/menu_ds_reset"
+        android:icon="@drawable/ic_refresh"
+        android:title="@string/ds_reset_game" />
+
+    <item
         android:id="@+id/menu_ds_controls"
         android:icon="@drawable/ic_controller"
         android:title="@string/ds_controls_title" />

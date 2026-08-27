@@ -525,6 +525,13 @@
     <string name="emulation_haptic_feedback">Haptic Feedback</string>
     <string name="emulation_overlay_options">Overlay Options</string>
     <string name="ds_controls_title">DS Controls</string>
+    <string name="ds_reset_game">Reset Game</string>
+    <string name="ds_reset_confirm_title">Reset Game?</string>
+    <string name="ds_reset_confirm_message">This will restart the current DS game from power-on, losing any unsaved progress.</string>
+    <string name="ds_exit_destination_title">Closing DS Game</string>
+    <string name="ds_exit_destination_message">Would you like to go to the 3DS HOME Menu?</string>
+    <string name="ds_exit_destination_home_menu">3DS HOME Menu</string>
+    <string name="ds_exit_destination_game_list">Game List</string>
     <string name="ds_hotkey_return_home">Return to 3DS HOME Menu</string>
     <string name="ds_layout_and_remapping">Layout &amp; Remapping</string>
     <string name="ds_dpad_follows_circle_pad">D-Pad Follows Circle Pad</string>
@@ -537,6 +544,8 @@
     <string name="ds_auto_savestate_description">Automatically save your progress when closing a DS game and resume from it next time, regardless of the game\'s own save data.</string>
     <string name="ds_screen_scale">DS Screen Size</string>
     <string name="ds_screen_scale_description">Shrink both DS screens to leave more room for the on-screen controls.</string>
+    <string name="ds_hide_from_game_list">Hide DS Games from Game List</string>
+    <string name="ds_hide_from_game_list_description">Hide .nds/.dsi files from the main game list. They stay fully playable through TWiLightMenu++, a forwarder, or a file manager -- this only declutters the list for setups that don\'t launch them from it directly.</string>
     <string name="emulation_configure_controls">Configure Controls</string>
     <string name="emulation_edit_layout">Edit Layout</string>
     <string name="emulation_done">Done</string>

@@ -271,6 +271,15 @@ class Settings {
         // write it). On by default; off restores the old always-boot-
         // fresh behavior.
         const val KEY_DS_AUTO_SAVESTATE = "ds_auto_savestate"
+        // Off by default (matches existing behavior): .nds/.dsi ROMs are
+        // listed directly in the game list (see GameHelper.addGamesRecursive
+        // / Game.extensions) alongside 3DS titles. Turning this on hides
+        // them from that list -- for setups that only ever launch DS games
+        // through TWiLightMenu++/a forwarder and find the raw .nds entries
+        // redundant clutter -- without touching whether those files are
+        // actually playable (a hidden .nds is still fully functional via
+        // TWiLightMenu++, a forwarder, or a file manager).
+        const val KEY_DS_HIDE_FROM_GAME_LIST = "ds_hide_from_game_list"
 
         val dsButtonKeys = listOf(
             KEY_DS_BUTTON_A,

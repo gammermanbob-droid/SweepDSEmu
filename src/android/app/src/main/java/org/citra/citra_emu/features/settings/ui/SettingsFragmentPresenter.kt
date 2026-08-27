@@ -1041,6 +1041,27 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
                 )
             )
 
+            val hideFromGameList: AbstractBooleanSetting = object : AbstractBooleanSetting {
+                override var boolean: Boolean
+                    get() = preferences.getBoolean(Settings.KEY_DS_HIDE_FROM_GAME_LIST, false)
+                    set(value) {
+                        preferences.edit().putBoolean(Settings.KEY_DS_HIDE_FROM_GAME_LIST, value).apply()
+                    }
+                override val key: String? = null
+                override val section: String? = null
+                override val isRuntimeEditable: Boolean = true
+                override val valueAsString: String
+                    get() = preferences.getBoolean(Settings.KEY_DS_HIDE_FROM_GAME_LIST, false).toString()
+                override val defaultValue: Any = false
+            }
+            add(
+                SwitchSetting(
+                    hideFromGameList,
+                    R.string.ds_hide_from_game_list,
+                    R.string.ds_hide_from_game_list_description
+                )
+            )
+
             val screenScale: AbstractIntSetting = object : AbstractIntSetting {
                 override var int: Int
                     get() = preferences.getInt(Settings.KEY_DS_SCREEN_SCALE, 100)

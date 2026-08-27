@@ -98,17 +98,21 @@ class Game(
     companion object {
         val allExtensions: Set<String> get() = extensions + badExtensions
 
+        // DS/DSi ROM extensions -- their own set (rather than just being
+        // inline in `extensions` below) so GameHelper can filter them out
+        // by extension alone when Settings.KEY_DS_HIDE_FROM_GAME_LIST is on.
+        val dsExtensions: Set<String> = HashSet(listOf("nds", "dsi"))
+
         val extensions: Set<String> = HashSet(
             listOf(
-                "3dsx", "app", "axf", "cci", "cxi", "elf", "z3dsx", "zcci", "zcxi", "3ds",
-                // DS/DSi ROMs -- GameInfo's native NCCH/SMDH loader doesn't
-                // understand these (isValid() comes back false, same as
-                // any other unrecognized file), but that only affects the
-                // long-press "about game" dialog; the list still shows
-                // them under their filename and EmulationActivity already
-                // redirects a direct .nds/.dsi tap to DsEmulationActivity.
-                "nds", "dsi"
-            )
+                "3dsx", "app", "axf", "cci", "cxi", "elf", "z3dsx", "zcci", "zcxi", "3ds"
+            ) + dsExtensions
+            // GameInfo's native NCCH/SMDH loader doesn't understand the DS/DSi
+            // extensions above (isValid() comes back false, same as any other
+            // unrecognized file), but that only affects the long-press "about
+            // game" dialog; the list still shows them under their filename and
+            // EmulationActivity already redirects a direct .nds/.dsi tap to
+            // DsEmulationActivity.
         )
 
         val badExtensions: Set<String> = HashSet(

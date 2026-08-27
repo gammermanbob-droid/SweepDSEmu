@@ -559,16 +559,55 @@ class DsEmulationActivity : AppCompatActivity() {
     }
 
     /**
-     * "Exit" in the in-game drawer menu (see setUpInGameMenu) closes the
-     * current DS game and returns to the emulated 3DS HOME Menu --
-     * confirm first so a misplaced tap doesn't lose unsaved progress.
-     * Same shape as EmulationFragment's own menu_exit handler.
+     * "Exit" in the in-game drawer menu, and the bound "return to HOME
+     * menu" hotkey, both end here now instead of silently always
+     * booting the 3DS HOME Menu: a DS game can be reached either
+     * through a forwarder (where HOME Menu is the natural place to land
+     * back on, matching real hardware) or picked directly from Azahar's
+     * own game list (where landing back on the emulated 3DS HOME Menu
+     * instead of the list the game was launched from is surprising).
+     * Ask every time rather than guessing which case this is.
      */
-    private fun confirmReturnToThreeDsHomeMenu() {
+    private fun confirmExitDestination() {
         AlertDialog.Builder(this)
-            .setTitle("Return to HOME Menu?")
-            .setMessage("This will close the current DS game.")
-            .setPositiveButton(android.R.string.ok) { _, _ -> returnToThreeDsHomeMenu() }
+            .setTitle(R.string.ds_exit_destination_title)
+            .setMessage(R.string.ds_exit_destination_message)
+            .setPositiveButton(R.string.ds_exit_destination_home_menu) { _, _ -> returnToThreeDsHomeMenu() }
+            .setNegativeButton(R.string.ds_exit_destination_game_list) { _, _ -> goToGameList() }
+            .show()
+    }
+
+    /**
+     * The "no" answer to [confirmExitDestination] -- lands back on
+     * Azahar's own game list (MainActivity) instead of the emulated 3DS
+     * HOME Menu, clearing this and anything else DS/3DS-emulation-
+     * related off the back stack so it matches what freshly opening the
+     * app shows, the same way [returnToThreeDsHomeMenu] clears down to
+     * a fresh HOME Menu launch for its own answer.
+     */
+    private fun goToGameList() {
+        stopEmulation()
+        val intent = Intent(this, org.citra.citra_emu.ui.main.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+        finish()
+    }
+
+    /**
+     * "Reset Game" in the in-game drawer menu -- a DS-side equivalent of
+     * a real console's power/reset button, wired to the core's existing
+     * (previously unused on Android) dsRequestReset(). Useful for things
+     * like Pokemon shiny-hunting, where restarting from power-on
+     * repeatedly for fresh random encounters is the whole point, rather
+     * than reloading a save. Confirm first since it discards unsaved
+     * progress, same shape as confirmExitDestination.
+     */
+    private fun confirmResetGame() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ds_reset_confirm_title)
+            .setMessage(R.string.ds_reset_confirm_message)
+            .setPositiveButton(android.R.string.ok) { _, _ -> NativeLibrary.dsRequestReset() }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
@@ -621,6 +660,11 @@ class DsEmulationActivity : AppCompatActivity() {
                     showOverlayMenu()
                     true
                 }
+                R.id.menu_ds_reset -> {
+                    binding.drawerLayout.close()
+                    confirmResetGame()
+                    true
+                }
                 R.id.menu_ds_controls -> {
                     SettingsActivity.launch(this, Settings.SECTION_DS_CONTROLS, "")
                     true
@@ -631,7 +675,7 @@ class DsEmulationActivity : AppCompatActivity() {
                 }
                 R.id.menu_exit -> {
                     binding.drawerLayout.close()
-                    confirmReturnToThreeDsHomeMenu()
+                    confirmExitDestination()
                     true
                 }
                 else -> true
@@ -740,15 +784,15 @@ class DsEmulationActivity : AppCompatActivity() {
 
         // User-configurable (DsControlsSettings) -- BUTTON_MODE is only
         // the fallback default for as long as this hotkey is unbound.
-        // Fires directly (no confirm dialog), matching the Qt
-        // frontend's own controller-bound "return to HOME menu" hotkey
-        // (DSPlayerWindow::PollController) -- unlike the on-screen HOME
-        // button/drawer "Exit" path below, which still confirms first,
-        // since a controller hotkey the user deliberately bound is much
-        // less likely to be an accidental press than a stray touch.
+        // Used to fire returnToThreeDsHomeMenu() directly with no
+        // prompt at all, on the theory that a deliberately-bound hotkey
+        // press is unambiguous -- but the destination is genuinely
+        // ambiguous regardless of how deliberate the press was (forwarder
+        // vs. direct game-list launch, see confirmExitDestination), so
+        // this now asks the same question the drawer's "Exit" does.
         if (event.keyCode == returnToHomeMenuKeyCode()) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                returnToThreeDsHomeMenu()
+                confirmExitDestination()
             }
             return true
         }
@@ -951,8 +995,19 @@ class DsEmulationActivity : AppCompatActivity() {
         Settings.KEY_DS_BUTTON_B -> listOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_X)
         Settings.KEY_DS_BUTTON_X -> listOf(KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_A)
         Settings.KEY_DS_BUTTON_Y -> listOf(KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_S)
-        Settings.KEY_DS_BUTTON_L -> listOf(KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_Q)
-        Settings.KEY_DS_BUTTON_R -> listOf(KeyEvent.KEYCODE_BUTTON_R2, KeyEvent.KEYCODE_W)
+        // DS hardware only has one shoulder-button pair, which every
+        // physical gamepad's L1/R1 bumpers map to -- matching what the
+        // 3DS side's own default L/R binding uses (see
+        // InputBindingSetting's KEYCODE_BUTTON_L1/R1 -> TRIGGER_L/R).
+        // L2/R2 (the analog triggers) are ALSO listed since some
+        // controllers only expose analog triggers as key events, but
+        // L1/R1 must come first here -- these were previously L2/R2-only,
+        // which is why a gamepad's real L/R bumpers (recognized fine on
+        // the 3DS side) never registered as DS L/R at all.
+        Settings.KEY_DS_BUTTON_L ->
+            listOf(KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_Q)
+        Settings.KEY_DS_BUTTON_R ->
+            listOf(KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2, KeyEvent.KEYCODE_W)
         Settings.KEY_DS_BUTTON_START -> listOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ENTER)
         Settings.KEY_DS_BUTTON_SELECT -> listOf(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_SPACE)
         Settings.KEY_DS_BUTTON_UP -> listOf(KeyEvent.KEYCODE_DPAD_UP)
