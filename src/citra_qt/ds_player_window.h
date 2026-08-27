@@ -44,7 +44,11 @@ public:
     // Thread-safe; call from the GUI thread as input state changes.
     void SetInput(const MergedCore::InputState& input);
 
-    void RequestStop();
+    // auto_save_path empty = skip the auto-savestate (feature disabled,
+    // or nothing worth preserving). Blocks briefly (bounded) if non-empty,
+    // waiting for the save to actually be written before the run loop is
+    // told to stop -- see the .cpp for why that ordering matters.
+    void RequestStop(const QString& auto_save_path = {});
 
     // Thread-safe; queued through Qt's event loop internally.
     void RequestSaveState(const QString& path);
@@ -126,6 +130,15 @@ private:
     std::unique_ptr<DSEmuThread> thread_;
     QImage top_image_;
     QImage bottom_image_;
+
+    // Drives the loading screen's spinner (see paintEvent) -- ticks its
+    // own rotation angle and repaints while no real frame has arrived
+    // yet, then stops itself for good once OnFrameReady's first call
+    // hides the loading screen, so it isn't wastefully redrawing/timing
+    // for the rest of the session.
+    QTimer* loading_spinner_timer_ = nullptr;
+    int loading_spinner_angle_ = 0;
+    bool first_frame_received_ = false;
 
     // Owned on the GUI thread (this object's thread) since QAudioSink
     // needs a running Qt event loop for its internal state machine;

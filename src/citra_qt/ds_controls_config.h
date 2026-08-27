@@ -65,4 +65,12 @@ void SaveReturnToHomeMenuKey(int key);
 QString LoadHomeMenuControllerBinding();
 void SaveHomeMenuControllerBinding(const QString& serialized);
 
+// Not a control binding (stored under its own [DSGameplay] group, not
+// [DSControls]) but kept in this file rather than a new one for a single
+// boolean. Auto-saves a savestate when a DS session closes and
+// auto-loads it the next time that same ROM opens, independent of the
+// game's own cart save data. On by default.
+bool LoadAutoSaveState();
+void SaveAutoSaveState(bool enabled);
+
 } // namespace DSControlsConfig

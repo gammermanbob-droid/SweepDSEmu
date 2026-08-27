@@ -2,6 +2,7 @@
 
 #include "citra_qt/configure_ds_controls.h"
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -82,6 +83,13 @@ ConfigureDSControls::ConfigureDSControls(QWidget* parent)
     auto* restore_defaults = new QPushButton(tr("Restore Defaults"), this);
     connect(restore_defaults, &QPushButton::clicked, this, &ConfigureDSControls::RestoreDefaults);
     layout->addWidget(restore_defaults);
+
+    auto_savestate_checkbox_ = new QCheckBox(tr("Auto save/load state"), this);
+    auto_savestate_checkbox_->setChecked(DSControlsConfig::LoadAutoSaveState());
+    auto_savestate_checkbox_->setToolTip(
+        tr("Automatically save your progress when closing a DS game and resume from it next "
+           "time, regardless of the game's own save data."));
+    layout->addWidget(auto_savestate_checkbox_);
 
     auto* button_box =
         new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -306,5 +314,6 @@ void ConfigureDSControls::Accept() {
     DSControlsConfig::SaveControllerBindings(controller_bindings_);
     DSControlsConfig::SaveReturnToHomeMenuKey(home_menu_key_);
     DSControlsConfig::SaveHomeMenuControllerBinding(home_menu_controller_binding_);
+    DSControlsConfig::SaveAutoSaveState(auto_savestate_checkbox_->isChecked());
     accept();
 }

@@ -7,6 +7,7 @@
 #include <QAudioFormat>
 #include <QCloseEvent>
 #include <QFileInfo>
+#include <QFont>
 #include <QKeyEvent>
 #include <QMediaDevices>
 #include <QMessageBox>
@@ -58,6 +59,17 @@ QString StatePathFor(const QString& rom_path) {
            QStringLiteral(".dstate");
 }
 
+// Distinct from StatePathFor's manual-save-slot files so the auto-save
+// feature never collides with (or gets confused for) a save the user
+// made deliberately.
+QString AutoStatePathFor(const QString& rom_path) {
+    const std::string dir = FileUtil::GetUserPath(FileUtil::UserPath::UserDir) + "nds_states";
+    FileUtil::CreateFullPath(dir + "/");
+    const QFileInfo info(rom_path);
+    return QString::fromStdString(dir) + QStringLiteral("/") + info.completeBaseName() +
+           QStringLiteral(".auto.dstate");
+}
+
 } // namespace
 
 DSEmuThread::DSEmuThread(std::unique_ptr<MergedCore::EmulationCore> core, QString rom_path)
@@ -70,7 +82,27 @@ void DSEmuThread::SetInput(const MergedCore::InputState& input) {
     input_ = input;
 }
 
-void DSEmuThread::RequestStop() {
+void DSEmuThread::RequestStop(const QString& auto_save_path) {
+    if (!auto_save_path.isEmpty()) {
+        RequestSaveState(auto_save_path);
+        // run()'s loop only consumes a pending save/load path once per
+        // frame, in between other work -- if stop_requested_ were set
+        // immediately, a thread currently asleep in its frame-pacing wait
+        // could wake up, see stop_requested_ already true, and exit
+        // without ever reaching that check, silently dropping this save.
+        // Wait for it to actually be consumed first. Bounded so a wedged
+        // emulation thread can't hang shutdown forever; one real frame at
+        // ~60fps is ~16ms, so 2s is generous headroom.
+        for (int i = 0; i < 200; ++i) {
+            {
+                std::lock_guard lock(state_path_mutex_);
+                if (pending_save_path_.isEmpty()) {
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
     stop_requested_ = true;
 }
 
@@ -218,9 +250,37 @@ DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidg
     // smaller than what other melonDS embeddings implicitly rely on).
     thread_->setStackSize(16 * 1024 * 1024);
     thread_->start();
+
+    if (DSControlsConfig::LoadAutoSaveState()) {
+        // Must match closeEvent()'s AutoStatePathFor(windowTitle()) below
+        // (itself matching the pre-existing manual save/load convention
+        // at F5/F9) rather than rom_path directly -- those are different
+        // strings (windowTitle() is "SweepDS Emu | <filename>"), so using
+        // rom_path here would derive a different filename and the
+        // auto-load could never find what the auto-save actually wrote.
+        const QString auto_path = AutoStatePathFor(windowTitle());
+        if (QFileInfo::exists(auto_path)) {
+            thread_->RequestLoadState(auto_path);
+        }
+    }
+
+    loading_spinner_timer_ = new QTimer(this);
+    connect(loading_spinner_timer_, &QTimer::timeout, this, [this]() {
+        loading_spinner_angle_ = (loading_spinner_angle_ + 8) % 360;
+        update();
+    });
+    loading_spinner_timer_->start(16);
 }
 
 DSPlayerWindow::~DSPlayerWindow() {
+    // The normal user-initiated close path (closeEvent(), below) already
+    // stops the thread -- including the auto-save, when enabled -- before
+    // this destructor ever runs, via Qt::WA_DeleteOnClose. This is just a
+    // safety net for the (rare) case of programmatic deletion without a
+    // close event; a plain stop here, not another auto-save attempt, since
+    // by the time closeEvent() has already run the thread's loop has
+    // exited and nothing would be left to consume a second save request
+    // (RequestStop's bounded wait would just burn its full timeout).
     if (thread_) {
         thread_->RequestStop();
         thread_->wait();
@@ -228,6 +288,10 @@ DSPlayerWindow::~DSPlayerWindow() {
 }
 
 void DSPlayerWindow::OnFrameReady(QImage top, QImage bottom) {
+    if (!first_frame_received_) {
+        first_frame_received_ = true;
+        loading_spinner_timer_->stop();
+    }
     if (!top.isNull())
         top_image_ = std::move(top);
     if (!bottom.isNull())
@@ -280,8 +344,41 @@ void DSPlayerWindow::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
 
-    if (top_image_.isNull() && bottom_image_.isNull())
+    if (top_image_.isNull() && bottom_image_.isNull()) {
+        // No real frame has arrived yet -- the ROM (and, for homebrew,
+        // its SD card image) is still loading, which can take a
+        // noticeable moment. Without this the window is just plain black
+        // the whole time, indistinguishable from a hang. loading_spinner_timer_
+        // (started in the constructor, stopped for good on the first real
+        // frame in OnFrameReady) keeps repainting this at ~60fps to
+        // animate the spinner below.
+        const int spinner_diameter = std::min(width(), height()) / 6;
+        const QRect spinner_rect(width() / 2 - spinner_diameter / 2,
+                                  height() / 2 - spinner_diameter / 2 - spinner_diameter,
+                                  spinner_diameter, spinner_diameter);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(QColor(255, 255, 255, 60));
+        pen.setWidth(spinner_diameter / 10);
+        pen.setCapStyle(Qt::RoundCap);
+        painter.setPen(pen);
+        painter.drawArc(spinner_rect, 0, 360 * 16);
+        pen.setColor(Qt::white);
+        painter.setPen(pen);
+        // Angles in Qt's drawArc are in 1/16ths of a degree and increase
+        // counter-clockwise from 3 o'clock -- negate loading_spinner_angle_
+        // so it visibly spins clockwise, the more familiar direction for
+        // this kind of indicator.
+        painter.drawArc(spinner_rect, -loading_spinner_angle_ * 16, 90 * 16);
+
+        painter.setPen(Qt::white);
+        QFont font = painter.font();
+        font.setPointSize(14);
+        painter.setFont(font);
+        const QRect text_rect(0, height() / 2 + spinner_diameter / 2, width(),
+                               height() / 2 - spinner_diameter / 2);
+        painter.drawText(text_rect, Qt::AlignHCenter | Qt::AlignTop, tr("Loading…"));
         return;
+    }
 
     const int half_height = height() / 2;
     if (!top_image_.isNull()) {
@@ -436,7 +533,9 @@ void DSPlayerWindow::keyReleaseEvent(QKeyEvent* event) {
 
 void DSPlayerWindow::closeEvent(QCloseEvent* event) {
     if (thread_) {
-        thread_->RequestStop();
+        thread_->RequestStop(DSControlsConfig::LoadAutoSaveState()
+                                  ? AutoStatePathFor(windowTitle())
+                                  : QString());
         thread_->wait();
     }
     QWidget::closeEvent(event);

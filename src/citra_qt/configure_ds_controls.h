@@ -5,6 +5,9 @@
 // ConfigureDialog tab set — that dialog's tabs are all wired through
 // Settings::values, and DS control bindings live in their own small
 // QSettings-backed store instead (see ds_controls_config.h for why).
+// Also hosts the one DS gameplay toggle that exists so far (auto
+// save/load state) for the same reason -- there's no other DS settings
+// surface on desktop to put it in yet.
 
 #pragma once
 
@@ -21,6 +24,7 @@ namespace InputCommon::Polling {
 class DevicePoller;
 }
 
+class QCheckBox;
 class QPushButton;
 
 class ConfigureDSControls : public QDialog {
@@ -89,4 +93,6 @@ private:
     std::vector<std::unique_ptr<InputCommon::Polling::DevicePoller>> device_pollers_;
     QTimer poll_timer_;
     QTimer timeout_timer_;
+
+    QCheckBox* auto_savestate_checkbox_ = nullptr;
 };

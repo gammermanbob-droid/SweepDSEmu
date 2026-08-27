@@ -191,4 +191,20 @@ void SaveHomeMenuControllerBinding(const QString& serialized) {
     settings.sync();
 }
 
+bool LoadAutoSaveState() {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSGameplay"));
+    const QVariant stored = settings.value(QStringLiteral("auto_savestate"));
+    settings.endGroup();
+    return stored.isValid() ? stored.toBool() : true;
+}
+
+void SaveAutoSaveState(bool enabled) {
+    QSettings settings = OpenSettings();
+    settings.beginGroup(QStringLiteral("DSGameplay"));
+    settings.setValue(QStringLiteral("auto_savestate"), enabled);
+    settings.endGroup();
+    settings.sync();
+}
+
 } // namespace DSControlsConfig
