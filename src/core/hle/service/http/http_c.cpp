@@ -59,6 +59,7 @@ enum {
     SessionStateError = 102,
 
     WrongCertHandle = 201,
+    TooManyRootCertChains = 202,
     TooManyClientCerts = 203,
     NotImplemented = 1012,
 };
@@ -72,6 +73,9 @@ constexpr Result ErrorNotImplemented = // 0xD960A3F4
            ErrorLevel::Permanent);
 constexpr Result ErrorTooManyClientCerts = // 0xD8A0A0CB
     Result(ErrCodes::TooManyClientCerts, ErrorModule::HTTP, ErrorSummary::InvalidState,
+           ErrorLevel::Permanent);
+constexpr Result ErrorTooManyRootCertChains =
+    Result(ErrCodes::TooManyRootCertChains, ErrorModule::HTTP, ErrorSummary::InvalidState,
            ErrorLevel::Permanent);
 constexpr Result ErrorHeaderNotFound = // 0xD8A0A028
     Result(ErrCodes::HeaderNotFound, ErrorModule::HTTP, ErrorSummary::InvalidState,
@@ -344,7 +348,7 @@ void Context::MakeRequestNonSSL(httplib::Request& request, const Common::URLInfo
         LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
         state = RequestState::Completed;
     } else {
-        LOG_DEBUG(Service_HTTP, "Request successful");
+        LOG_WARNING(Service_HTTP, "Request successful: status={} url={}", response.status, url);
         state = RequestState::ReceivingBody;
     }
 }
@@ -391,7 +395,37 @@ void Context::MakeRequestSSL(httplib::Request& request, const Common::URLInfo& u
     // TODO(B3N30): Check for SSLOptions-Bits and set the verify method accordingly
     // https://www.3dbrew.org/wiki/SSL_Services#SSLOpt
     // Hack: Since for now RootCerts are not implemented we set the VerifyMode to None.
-    client->enable_server_certificate_verification(false);
+    if (auto root_chain = ssl_config.root_ca_chain.lock()) {
+        X509_STORE* ca_store = X509_STORE_new();
+        bool added_ca = false;
+
+        if (ca_store) {
+            for (const auto& root_ca : root_chain->certificates) {
+                const unsigned char* ca_data = root_ca.certificate.data();
+
+                X509* ca_cert = d2i_X509(
+                    nullptr, &ca_data, static_cast<long>(root_ca.certificate.size()));
+
+                if (ca_cert) {
+                    added_ca |= X509_STORE_add_cert(ca_store, ca_cert) == 1;
+                    X509_free(ca_cert);
+                }
+            }
+
+            if (added_ca) {
+                client->set_ca_cert_store(ca_store);
+                client->enable_server_certificate_verification(true);
+            } else {
+                X509_STORE_free(ca_store);
+                // The certificates behind Nintendo's built-in IDs are not currently available to
+                // HLE. Keep the pre-existing HTTP behavior for such chains instead of installing
+                // an empty X509 store, which would reject every HTTPS server.
+                client->enable_server_certificate_verification(false);
+            }
+        }
+    } else {
+        client->enable_server_certificate_verification(false);
+    }
 
     client->set_header_writer(
         [this, &pending_headers](httplib::Stream& strm, httplib::Headers& httplib_headers) {
@@ -402,7 +436,7 @@ void Context::MakeRequestSSL(httplib::Request& request, const Common::URLInfo& u
         LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
         state = RequestState::Completed;
     } else {
-        LOG_DEBUG(Service_HTTP, "Request successful");
+        LOG_WARNING(Service_HTTP, "Request successful: status={} url={}", response.status, url);
         state = RequestState::ReceivingBody;
     }
 }
@@ -697,7 +731,8 @@ void HTTP_C::CreateContext(Kernel::HLERequestContext& ctx) {
     std::string url(url_size - 1, '\0');
     buffer.Read(url.data(), 0, url_size - 1);
 
-    LOG_DEBUG(Service_HTTP, "called, url_size={}, url={}, method={}", url_size, url, method);
+    LOG_WARNING(Service_HTTP, "CreateContext: url_size={} url={} method={}", url_size, url,
+                method);
 
     auto* session_data = EnsureSessionInitialized(ctx, rp);
     if (!session_data) {
@@ -738,7 +773,7 @@ void HTTP_C::CreateContext(Kernel::HLERequestContext& ctx) {
     contexts[context_counter].url = std::move(url);
     contexts[context_counter].method = method;
     contexts[context_counter].state = RequestState::NotStarted;
-    // TODO(Subv): Find a correct default value for this field.
+    contexts[context_counter].ssl_config.options = 0;
     contexts[context_counter].socket_buffer_size = 0;
     contexts[context_counter].handle = context_counter;
     contexts[context_counter].session_id = session_data->session_id;
@@ -1667,6 +1702,182 @@ void HTTP_C::AddDefaultCert(Kernel::HLERequestContext& ctx) {
     rb.Push(ResultSuccess);
 }
 
+void HTTP_C::SelectRootCertChain(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    const Context::Handle context_handle = rp.Pop<u32>();
+    const RootCertChain::Handle chain_handle = rp.Pop<u32>();
+
+    if (!PerformStateChecks(ctx, rp, context_handle)) {
+        return;
+    }
+
+    const auto chain = root_cert_chains.find(chain_handle);
+    if (chain == root_cert_chains.end()) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorWrongCertHandle);
+        return;
+    }
+
+    auto* session_data = GetSessionData(ctx.Session());
+    ASSERT(session_data);
+    if (chain->second->session_id != session_data->session_id) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorWrongCertHandle);
+        return;
+    }
+
+    Context& http_context = GetContext(context_handle);
+    if (http_context.state != RequestState::NotStarted) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorInvalidRequestState);
+        return;
+    }
+    if (http_context.ssl_config.root_ca_chain.lock()) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorCertAlreadySet);
+        return;
+    }
+
+    http_context.ssl_config.root_ca_chain = chain->second;
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+    rb.Push(ResultSuccess);
+}
+
+void HTTP_C::CreateRootCertChain(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    auto* session_data = EnsureSessionInitialized(ctx, rp);
+    if (!session_data) {
+        return;
+    }
+    if (session_data->current_http_context) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorNotImplemented);
+        return;
+    }
+    if (session_data->num_root_cert_chains >= 2) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorTooManyRootCertChains);
+        return;
+    }
+
+    const auto handle = ++root_cert_chain_counter;
+    auto chain = std::make_shared<RootCertChain>();
+    chain->handle = handle;
+    chain->session_id = session_data->session_id;
+    root_cert_chains.emplace(handle, std::move(chain));
+    ++session_data->num_root_cert_chains;
+
+    LOG_DEBUG(Service_HTTP, "created root certificate chain handle={}", handle);
+    IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+    rb.Push(ResultSuccess);
+    rb.Push(handle);
+}
+
+void HTTP_C::DestroyRootCertChain(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    const RootCertChain::Handle chain_handle = rp.Pop<u32>();
+    auto* session_data = EnsureSessionInitialized(ctx, rp);
+    if (!session_data) {
+        return;
+    }
+
+    const auto chain = root_cert_chains.find(chain_handle);
+    if (chain != root_cert_chains.end() && chain->second->session_id == session_data->session_id) {
+        root_cert_chains.erase(chain);
+        --session_data->num_root_cert_chains;
+    }
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+    rb.Push(ResultSuccess);
+}
+
+void HTTP_C::RootCertChainAddCert(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    const RootCertChain::Handle chain_handle = rp.Pop<u32>();
+    const u32 cert_size = rp.Pop<u32>();
+    auto cert_buffer = rp.PopMappedBuffer();
+    auto* session_data = EnsureSessionInitialized(ctx, rp);
+    if (!session_data) {
+        return;
+    }
+
+    const auto chain = root_cert_chains.find(chain_handle);
+    if (chain == root_cert_chains.end() || chain->second->session_id != session_data->session_id) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
+        rb.Push(ErrorWrongCertHandle);
+        rb.PushMappedBuffer(cert_buffer);
+        return;
+    }
+
+    RootCertChain::RootCACert cert{};
+    cert.handle = ++root_cert_counter;
+    cert.session_id = session_data->session_id;
+    cert.certificate.resize(cert_size);
+    cert_buffer.Read(cert.certificate.data(), 0, cert_size);
+    chain->second->certificates.push_back(std::move(cert));
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
+    rb.Push(ResultSuccess);
+    rb.Push(root_cert_counter);
+    rb.PushMappedBuffer(cert_buffer);
+}
+
+void HTTP_C::RootCertChainAddDefaultCert(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    const RootCertChain::Handle chain_handle = rp.Pop<u32>();
+    const u32 cert_id = rp.Pop<u32>();
+    auto* session_data = EnsureSessionInitialized(ctx, rp);
+    if (!session_data) {
+        return;
+    }
+
+    const auto chain = root_cert_chains.find(chain_handle);
+    if (chain == root_cert_chains.end() || chain->second->session_id != session_data->session_id) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorWrongCertHandle);
+        return;
+    }
+    if (cert_id < 1 || cert_id > 0xB) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorWrongCertID);
+        return;
+    }
+
+    RootCertChain::RootCACert cert{};
+    cert.handle = ++root_cert_counter;
+    cert.session_id = session_data->session_id;
+    cert.default_cert_id = cert_id;
+    chain->second->certificates.push_back(std::move(cert));
+
+    LOG_DEBUG(Service_HTTP, "added default certificate id={} handle={} to chain={}", cert_id,
+              root_cert_counter, chain_handle);
+    IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+    rb.Push(ResultSuccess);
+    rb.Push(root_cert_counter);
+}
+
+void HTTP_C::RootCertChainRemoveCert(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    const RootCertChain::Handle chain_handle = rp.Pop<u32>();
+    const RootCertChain::RootCACert::Handle cert_handle = rp.Pop<u32>();
+    auto* session_data = EnsureSessionInitialized(ctx, rp);
+    if (!session_data) {
+        return;
+    }
+
+    const auto chain = root_cert_chains.find(chain_handle);
+    if (chain == root_cert_chains.end() || chain->second->session_id != session_data->session_id) {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ErrorWrongCertHandle);
+        return;
+    }
+    std::erase_if(chain->second->certificates,
+                  [cert_handle](const auto& cert) { return cert.handle == cert_handle; });
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+    rb.Push(ResultSuccess);
+}
+
 void HTTP_C::SetDefaultClientCert(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
     const Context::Handle context_handle = rp.Pop<u32>();
@@ -1756,7 +1967,15 @@ void HTTP_C::SetSSLOpt(Kernel::HLERequestContext& ctx) {
     const u32 context_handle = rp.Pop<u32>();
     const u32 opts = rp.Pop<u32>();
 
-    LOG_WARNING(Service_HTTP, "(STUBBED) called, context_handle={}, opts={}", context_handle, opts);
+    if (!PerformStateChecks(ctx, rp, context_handle)) {
+        return;
+    }
+
+    Context& http_context = GetContext(context_handle);
+    http_context.ssl_config.options = opts;
+
+    LOG_DEBUG(Service_HTTP, "SetSSLOpt: context_handle={}, opts=0x{:08X}",
+              context_handle, opts);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(ResultSuccess);
@@ -2322,18 +2541,18 @@ HTTP_C::HTTP_C() : ServiceFramework("http:C", 32) {
         {0x0023, &HTTP_C::GetResponseStatusCodeTimeout, "GetResponseStatusCodeTimeout"},
         {0x0024, &HTTP_C::AddTrustedRootCA, "AddTrustedRootCA"},
         {0x0025, &HTTP_C::AddDefaultCert, "AddDefaultCert"},
-        {0x0026, nullptr, "SelectRootCertChain"},
+        {0x0026, &HTTP_C::SelectRootCertChain, "SelectRootCertChain"},
         {0x0027, nullptr, "SetClientCert"},
         {0x0028, &HTTP_C::SetDefaultClientCert, "SetDefaultClientCert"},
         {0x0029, &HTTP_C::SetClientCertContext, "SetClientCertContext"},
         {0x002A, &HTTP_C::GetSSLError, "GetSSLError"},
         {0x002B, &HTTP_C::SetSSLOpt, "SetSSLOpt"},
         {0x002C, nullptr, "SetSSLClearOpt"},
-        {0x002D, nullptr, "CreateRootCertChain"},
-        {0x002E, nullptr, "DestroyRootCertChain"},
-        {0x002F, nullptr, "RootCertChainAddCert"},
-        {0x0030, nullptr, "RootCertChainAddDefaultCert"},
-        {0x0031, nullptr, "RootCertChainRemoveCert"},
+        {0x002D, &HTTP_C::CreateRootCertChain, "CreateRootCertChain"},
+        {0x002E, &HTTP_C::DestroyRootCertChain, "DestroyRootCertChain"},
+        {0x002F, &HTTP_C::RootCertChainAddCert, "RootCertChainAddCert"},
+        {0x0030, &HTTP_C::RootCertChainAddDefaultCert, "RootCertChainAddDefaultCert"},
+        {0x0031, &HTTP_C::RootCertChainRemoveCert, "RootCertChainRemoveCert"},
         {0x0032, &HTTP_C::OpenClientCertContext, "OpenClientCertContext"},
         {0x0033, &HTTP_C::OpenDefaultClientCertContext, "OpenDefaultClientCertContext"},
         {0x0034, &HTTP_C::CloseClientCertContext, "CloseClientCertContext"},

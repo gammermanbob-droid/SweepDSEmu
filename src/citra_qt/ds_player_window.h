@@ -54,6 +54,11 @@ public:
     void RequestSaveState(const QString& path);
     void RequestLoadState(const QString& path);
     void RequestReset();
+    // See EmulationCore::InsertCart's own doc comment -- only takes
+    // effect while this window is in "Boot DSi Menu" mode (no cart
+    // already loaded); otherwise silently ignored, same as the core
+    // itself does.
+    void RequestInsertCart(const QString& path);
 
 signals:
     void FrameReady(QImage top, QImage bottom);
@@ -81,6 +86,7 @@ private:
     std::mutex state_path_mutex_;
     QString pending_save_path_;
     QString pending_load_path_;
+    QString pending_insert_cart_path_;
 };
 
 class DSPlayerWindow : public QWidget {
@@ -98,6 +104,12 @@ public:
     // itself (see MelonDSCore::Reset's own doc comment for why those
     // are different outcomes from the same call).
     void RequestReset();
+
+    // See EmulationCore::InsertCart's own doc comment -- only takes
+    // effect while this window is in "Boot DSi Menu" mode (no cart
+    // already loaded); otherwise silently ignored, same as the core
+    // itself does.
+    void InsertCart(const QString& path);
 
 signals:
     // Emitted on the "return to 3DS HOME Menu" hotkey (F12) — a
@@ -194,6 +206,15 @@ private:
     // can never mask out what the keyboard is actually doing or vice
     // versa.
     uint32_t controller_buttons_ = 0;
+
+    // True when this window was opened via the empty-path "Boot DSi Menu"
+    // convention (see MelonDSCore::Load's own doc comment). Auto
+    // save/load-state is skipped for these sessions -- see the
+    // constructor and closeEvent() -- since there's no single "this
+    // game's save" to round-trip: the DSi Menu can launch a different
+    // NAND title each time, and blindly restoring whatever state was
+    // auto-saved from a prior session would silently override that.
+    bool is_dsi_menu_session_ = false;
 
     static constexpr int kScreenWidth = 256;
     static constexpr int kScreenHeight = 192;

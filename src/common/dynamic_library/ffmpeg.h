@@ -229,5 +229,8 @@ extern swr_init_func swr_init;
 extern swresample_version_func swresample_version;
 
 bool LoadFFmpeg();
+/// Loads only the small libavcodec/libavutil subset required for H.264 playback. Unlike the
+/// dumping backend, this may use a newer ABI-compatible FFmpeg installation.
+bool LoadH264Decoder();
 
 } // namespace DynamicLibrary::FFmpeg

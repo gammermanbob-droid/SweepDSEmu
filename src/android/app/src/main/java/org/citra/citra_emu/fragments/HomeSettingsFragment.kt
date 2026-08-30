@@ -159,6 +159,40 @@ class HomeSettingsFragment : Fragment() {
                 }
             ),
             HomeSetting(
+                R.string.boot_twilightmenu,
+                R.string.boot_twilightmenu_description,
+                R.drawable.ic_controller,
+                {
+                    // TWiLightMenu++'s own BOOT.NDS is a completely regular
+                    // DS ROM as far as MelonDSCore is concerned -- no NAND
+                    // or DSi Menu involved, just a normal direct boot -- so
+                    // this is really just "launch this one specific game"
+                    // with a friendlier, more discoverable entry point than
+                    // scrolling the game list to find it (GameHelper already
+                    // lists it there too; see its own addGamesRecursive doc
+                    // comment for why BOOT.NDS specifically is allowed at
+                    // the SD root when nothing else loose there is).
+                    var games = GameHelper.cachedGameList
+                    if (games.isEmpty()) {
+                        games = GameHelper.getGames()
+                    }
+                    val bootNds = games.firstOrNull { it.filename.equals("BOOT.NDS", ignoreCase = true) }
+                    if (bootNds != null) {
+                        startActivity(
+                            Intent(context, DsEmulationActivity::class.java).apply {
+                                putExtra(DsEmulationActivity.EXTRA_DS_ROM_PATH, bootNds.path)
+                            }
+                        )
+                    } else {
+                        Toast.makeText(
+                            context,
+                            R.string.boot_twilightmenu_not_found,
+                            LENGTH_LONG
+                        ).show()
+                    }
+                }
+            ),
+            HomeSetting(
                 R.string.artic_base_connect,
                 R.string.artic_base_connect_description,
                 R.drawable.ic_network,

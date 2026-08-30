@@ -246,7 +246,12 @@ class DsEmulationActivity : AppCompatActivity() {
             // too small for it.
             it.start()
         }
-        if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true)) {
+        // Skipped for "Boot DSi Menu" sessions (empty romPath) -- there's no
+        // single "this game's save" to round-trip there, since the DSi Menu
+        // can launch a different NAND title each time, and blindly
+        // restoring whatever state was auto-saved from a prior session
+        // would silently override that.
+        if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true) && romPath.isNotEmpty()) {
             val file = autoSaveStateFile()
             if (file.exists()) {
                 NativeLibrary.dsLoadState(file.absolutePath)
@@ -259,7 +264,9 @@ class DsEmulationActivity : AppCompatActivity() {
             return
         }
         isRunning = false
-        val autoSavePath = if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true)) {
+        val autoSavePath = if (preferences.getBoolean(Settings.KEY_DS_AUTO_SAVESTATE, true) &&
+            romPath.isNotEmpty()
+        ) {
             autoSaveStateFile().absolutePath
         } else {
             ""

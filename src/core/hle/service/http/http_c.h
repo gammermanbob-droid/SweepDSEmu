@@ -125,6 +125,7 @@ struct RootCertChain {
         Handle handle;
         u32 session_id;
         std::vector<u8> certificate;
+        boost::optional<u32> default_cert_id;
 
     private:
         template <class Archive>
@@ -132,6 +133,7 @@ struct RootCertChain {
             ar & handle;
             ar & session_id;
             ar & certificate;
+            ar & default_cert_id;
         }
         friend class boost::serialization::access;
     };
@@ -337,6 +339,8 @@ struct SessionData : public Kernel::SessionRequestHandler::SessionDataBase {
     u32 num_http_contexts = 0;
     /// Number of ClientCert contexts that are currently opened in this session.
     u32 num_client_certs = 0;
+    /// Number of RootCertChain contexts that are currently opened in this session.
+    u32 num_root_cert_chains = 0;
 
     /// Whether this session has been initialized in some way, be it via Initialize or
     /// InitializeConnectionSession.
@@ -351,6 +355,7 @@ private:
         ar & session_id;
         ar & num_http_contexts;
         ar & num_client_certs;
+        ar & num_root_cert_chains;
         ar & initialized;
     }
     friend class boost::serialization::access;
@@ -776,6 +781,13 @@ private:
      */
     void AddDefaultCert(Kernel::HLERequestContext& ctx);
 
+    void SelectRootCertChain(Kernel::HLERequestContext& ctx);
+    void CreateRootCertChain(Kernel::HLERequestContext& ctx);
+    void DestroyRootCertChain(Kernel::HLERequestContext& ctx);
+    void RootCertChainAddCert(Kernel::HLERequestContext& ctx);
+    void RootCertChainAddDefaultCert(Kernel::HLERequestContext& ctx);
+    void RootCertChainRemoveCert(Kernel::HLERequestContext& ctx);
+
     /**
      * GetResponseStatusCodeImpl:
      *  Implements GetResponseStatusCode and GetResponseStatusCodeTimeout service functions
@@ -907,6 +919,9 @@ private:
     /// The next handle number to use when a new ClientCert context is created.
     ClientCertContext::Handle client_certs_counter = 0;
 
+    RootCertChain::Handle root_cert_chain_counter = 0;
+    RootCertChain::RootCACert::Handle root_cert_counter = 0;
+
     /// Global list of HTTP contexts currently opened.
     std::unordered_map<Context::Handle, Context> contexts;
 
@@ -919,6 +934,8 @@ private:
 
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;
+
+    std::unordered_map<RootCertChain::Handle, std::shared_ptr<RootCertChain>> root_cert_chains;
 
     ClCertAData ClCertA;
 
@@ -938,6 +955,9 @@ private:
         ar & context_counter;
         ar & client_certs_counter;
         ar & client_certs;
+        ar & root_cert_chain_counter;
+        ar & root_cert_counter;
+        ar & root_cert_chains;
         // NOTE: `contexts` is not serialized because it contains non-serializable data. (i.e.
         // handles to ongoing HTTP requests.) Serializing across HTTP contexts will break.
     }

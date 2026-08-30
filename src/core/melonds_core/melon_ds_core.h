@@ -25,6 +25,15 @@
 
 namespace MergedCore {
 
+// Installs a DSiWare .nds/.dsi ROM dump into the DSi NAND, the same way
+// the real DSi Shop originally installed it -- see melon_ds_core.cpp's
+// implementation for why this exists (bare direct-booted DSiWare dumps
+// are unreliable and can hard-fault with a real "System memory is
+// damaged" DSi exception screen). Must not be called while a DS/DSi
+// session already has this same NAND file open. Returns an empty string
+// on success, or a human-readable error message otherwise.
+std::string InstallDSiWareTitleToNAND(const std::string& rom_path);
+
 class MelonDSCore final : public EmulationCore {
 public:
     MelonDSCore();
@@ -36,6 +45,7 @@ public:
     void RunFrame(const InputState& input, FrameOutput& out) override;
     void Reset() override;
     void Shutdown() override;
+    bool InsertCart(const std::string& path) override;
     void FlushSave() override;
 
     bool SaveState(const std::string& path) override;

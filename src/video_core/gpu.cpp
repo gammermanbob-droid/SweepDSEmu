@@ -274,6 +274,20 @@ void GPU::SetBufferSwap(u32 screen_id, const Service::GSP::FrameBufferInfo& info
     framebuffer.format = info.format;
     framebuffer.active_fb = info.shown_fb;
 
+    // libctru encodes the top-screen display mode in bits 5 and 6 of the framebuffer format:
+    // bit 6 is normal 2D, bit 5 is stereoscopic 3D, and neither bit means 800-pixel wide mode.
+    // The framebuffer is rotated in memory, so wide mode is represented as 240x800 rather than
+    // 240x400. Keeping the default height of 400 displays only half of applications that use
+    // gfxSetWide(), such as FourthTube.
+    if (screen_id == 0) {
+        constexpr u32 StereoModeBit = 1U << 5;
+        constexpr u32 Normal2DModeBit = 1U << 6;
+        constexpr u32 TopScreenHeight = 400;
+        constexpr u32 TopScreenWideHeight = 800;
+        const bool is_wide = (info.format & (StereoModeBit | Normal2DModeBit)) == 0;
+        framebuffer.height.Assign(is_wide ? TopScreenWideHeight : TopScreenHeight);
+    }
+
     // Notify debugger about the buffer swap.
     if (impl->debug_context) {
         impl->debug_context->OnEvent(Pica::DebugContext::Event::BufferSwapped, nullptr);

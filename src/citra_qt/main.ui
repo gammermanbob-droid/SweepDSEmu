@@ -158,6 +158,7 @@
     <addaction name="action_Setup_System_Files"/>
     <addaction name="menu_Boot_Home_Menu"/>
     <addaction name="action_Boot_DSi_Menu"/>
+    <addaction name="action_Boot_TWiLightMenu"/>
     <addaction name="separator"/>
     <addaction name="menu_recent_files"/>
     <addaction name="separator"/>
@@ -192,6 +193,8 @@
     <addaction name="action_Stop"/>
     <addaction name="action_Restart"/>
     <addaction name="action_Ds_Reset_Game"/>
+    <addaction name="action_Ds_Insert_Cart"/>
+    <addaction name="action_Ds_Install_Dsiware"/>
     <addaction name="separator"/>
     <addaction name="menu_Load_State"/>
     <addaction name="menu_Save_State"/>
@@ -391,6 +394,11 @@
   <action name="action_Boot_DSi_Menu">
     <property name="text">
       <string>Boot DSi Menu</string>
+    </property>
+  </action>
+  <action name="action_Boot_TWiLightMenu">
+    <property name="text">
+      <string>Boot TWiLightMenu++</string>
     </property>
   </action>
   <action name="action_Boot_Home_Menu_JPN">
@@ -861,6 +869,16 @@
   <action name="action_Ds_Reset_Game">
    <property name="text">
     <string>Reset DS Game</string>
+   </property>
+  </action>
+  <action name="action_Ds_Insert_Cart">
+   <property name="text">
+    <string>Insert DS Cart...</string>
+   </property>
+  </action>
+  <action name="action_Ds_Install_Dsiware">
+   <property name="text">
+    <string>Install DSiWare to NAND...</string>
    </property>
   </action>
   <action name="action_Restart">

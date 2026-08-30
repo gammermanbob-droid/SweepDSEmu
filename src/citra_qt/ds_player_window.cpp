@@ -120,6 +120,11 @@ void DSEmuThread::RequestLoadState(const QString& path) {
     pending_load_path_ = path;
 }
 
+void DSEmuThread::RequestInsertCart(const QString& path) {
+    std::lock_guard lock(state_path_mutex_);
+    pending_insert_cart_path_ = path;
+}
+
 void DSEmuThread::run() {
     NullEmuWindow window;
     const auto load_status = core_->Load(window, rom_path_.toStdString());
@@ -147,6 +152,10 @@ void DSEmuThread::run() {
             if (!pending_load_path_.isEmpty()) {
                 core_->LoadState(pending_load_path_.toStdString());
                 pending_load_path_.clear();
+            }
+            if (!pending_insert_cart_path_.isEmpty()) {
+                core_->InsertCart(pending_insert_cart_path_.toStdString());
+                pending_insert_cart_path_.clear();
             }
         }
 
@@ -203,6 +212,7 @@ DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidg
     const QString display_name =
         rom_path.isEmpty() ? QStringLiteral("DSi Menu") : QFileInfo(rom_path).fileName();
     setWindowTitle(QStringLiteral("SweepDS Emu | %1").arg(display_name));
+    is_dsi_menu_session_ = rom_path.isEmpty();
     resize(kScreenWidth * 2, kScreenHeight * 2 * 2);
     setFocusPolicy(Qt::StrongFocus);
 
@@ -257,7 +267,7 @@ DSPlayerWindow::DSPlayerWindow(const QString& rom_path, QWidget* parent) : QWidg
     thread_->setStackSize(16 * 1024 * 1024);
     thread_->start();
 
-    if (DSControlsConfig::LoadAutoSaveState()) {
+    if (DSControlsConfig::LoadAutoSaveState() && !is_dsi_menu_session_) {
         // Must match closeEvent()'s AutoStatePathFor(windowTitle()) below
         // (itself matching the pre-existing manual save/load convention
         // at F5/F9) rather than rom_path directly -- those are different
@@ -487,6 +497,10 @@ void DSPlayerWindow::RequestReset() {
     thread_->RequestReset();
 }
 
+void DSPlayerWindow::InsertCart(const QString& path) {
+    thread_->RequestInsertCart(path);
+}
+
 void DSPlayerWindow::keyPressEvent(QKeyEvent* event) {
     if (event->isAutoRepeat()) {
         return;
@@ -543,7 +557,7 @@ void DSPlayerWindow::keyReleaseEvent(QKeyEvent* event) {
 
 void DSPlayerWindow::closeEvent(QCloseEvent* event) {
     if (thread_) {
-        thread_->RequestStop(DSControlsConfig::LoadAutoSaveState()
+        thread_->RequestStop(DSControlsConfig::LoadAutoSaveState() && !is_dsi_menu_session_
                                   ? AutoStatePathFor(windowTitle())
                                   : QString());
         thread_->wait();

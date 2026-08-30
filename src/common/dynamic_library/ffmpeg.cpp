@@ -391,4 +391,48 @@ bool LoadFFmpeg() {
     return LoadAVUtil() && LoadAVCodec() && LoadAVFilter() && LoadAVFormat() && LoadSWResample();
 }
 
+bool LoadH264Decoder() {
+    if (avutil && avcodec && av_frame_alloc && av_frame_free && av_frame_unref &&
+        avcodec_find_decoder && avcodec_alloc_context3 && avcodec_open2 && avcodec_send_packet &&
+        avcodec_receive_frame && avcodec_free_context) {
+        return true;
+    }
+
+    // The optional recording backend is deliberately strict about FFmpeg versions and requires
+    // every FFmpeg component. Video HLE needs only stable codec/frame entry points, so permit the
+    // unversioned libraries supplied by newer macOS/Homebrew installations as a fallback.
+    auto util_library = std::make_unique<Common::DynamicLibrary>("avutil", -1);
+    auto codec_library = std::make_unique<Common::DynamicLibrary>("avcodec", -1);
+    if (!util_library->IsLoaded() || !codec_library->IsLoaded()) {
+        LOG_WARNING(Common, "Could not load FFmpeg H.264 decoder libraries");
+        return false;
+    }
+
+    av_frame_alloc = util_library->GetSymbol<av_frame_alloc_func>("av_frame_alloc");
+    av_frame_free = util_library->GetSymbol<av_frame_free_func>("av_frame_free");
+    av_frame_unref = util_library->GetSymbol<av_frame_unref_func>("av_frame_unref");
+    avcodec_find_decoder =
+        codec_library->GetSymbol<avcodec_find_decoder_func>("avcodec_find_decoder");
+    avcodec_alloc_context3 =
+        codec_library->GetSymbol<avcodec_alloc_context3_func>("avcodec_alloc_context3");
+    avcodec_open2 = codec_library->GetSymbol<avcodec_open2_func>("avcodec_open2");
+    avcodec_send_packet =
+        codec_library->GetSymbol<avcodec_send_packet_func>("avcodec_send_packet");
+    avcodec_receive_frame =
+        codec_library->GetSymbol<avcodec_receive_frame_func>("avcodec_receive_frame");
+    avcodec_free_context =
+        codec_library->GetSymbol<avcodec_free_context_func>("avcodec_free_context");
+
+    if (!av_frame_alloc || !av_frame_free || !av_frame_unref || !avcodec_find_decoder ||
+        !avcodec_alloc_context3 || !avcodec_open2 || !avcodec_send_packet ||
+        !avcodec_receive_frame || !avcodec_free_context) {
+        LOG_WARNING(Common, "FFmpeg libraries lack required H.264 decoder functions");
+        return false;
+    }
+    avutil = std::move(util_library);
+    avcodec = std::move(codec_library);
+    LOG_INFO(Common, "Successfully loaded FFmpeg H.264 decoder subset");
+    return true;
+}
+
 } // namespace DynamicLibrary::FFmpeg

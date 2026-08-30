@@ -30,6 +30,7 @@
 #include "NDSCart.h"
 #include "Platform.h"
 #include "SPI_Firmware.h"
+#include "sha1/sha1.hpp"
 
 namespace melonDS::Platform {
 // Defined in melonds_platform_headless.cpp's SignalStop(); see the
@@ -493,6 +494,136 @@ bool ReadFileExact(const fs::path& path, std::array<uint8_t, N>& out) {
 MelonDSCore::MelonDSCore() = default;
 MelonDSCore::~MelonDSCore() { Shutdown(); }
 
+// See this function's own declaration in melon_ds_core.h for the summary.
+// Longer version: DSiWare is fundamentally designed to run from
+// NAND-installed content, not as a loose ROM file -- direct-booting a
+// bare .nds/.dsi DSiWare dump (MelonDSCore::Load's normal, boot_to_menu
+// == false path) is fragile even in upstream melonDS, since a title's own
+// code expects NAND-resident save/config metadata that direct-boot's
+// emulated setup can't fully fake for every title (see melonDS issues
+// #1577 and #2623 upstream). This uses melonDS's own
+// DSi_NAND::NANDMount::ImportTitle -- the same primitive melonDS's own
+// Title Manager dialog calls -- with a Title Metadata (TMD) synthesized
+// from the ROM's own DSi-extended header fields (DSiTitleIDHigh/Low),
+// matching DS-Homebrew/NTM's maketmd.c byte-for-byte (github.com/
+// Epicpkmn11/NTM) -- a real DSi homebrew tool proven to produce TMDs
+// real hardware accepts for titles with no genuine Nintendo-issued TMD,
+// which is exactly our situation here.
+//
+// This writes a fully correct, verified entry -- confirmed byte-for-byte
+// (via a standalone NAND-crypto/FAT decoder built for this investigation)
+// to persist on NAND exactly as melonDS's own Title Manager would produce
+// it. It does NOT reliably survive being displayed on the DSi Menu: the
+// real Menu firmware, running for real inside melonDS's own CPU emulation,
+// deletes the entry during its own boot sequence sometime after this
+// function returns -- confirmed by decrypting the exact NAND bytes
+// immediately after install (entry present, attribute 0x10) and again
+// immediately after one Menu boot (entry gone, FAT deletion marker 0xE5
+// written over it). Real, unsigned NAND-injected DSiWare is well known to
+// work fine on genuine DSi hardware (this is the entire basis of tools
+// like NTM), so this is a melonDS-side gap in emulating whatever
+// validation the real System Menu performs on titles it finds -- not
+// something fixable from this side. Kept as-is (rather than reverted)
+// since the NAND write itself is correct and harmless, and may start
+// working unmodified if melonDS fixes this upstream.
+std::string InstallDSiWareTitleToNAND(const std::string& rom_path) {
+    const std::vector<fs::path> searchDirs = SystemFileSearchDirs();
+    fs::path dsi_bios7_path = FindSystemFile(searchDirs, "dsi_bios7.bin");
+    fs::path dsi_nand_path = FindSystemFile(searchDirs, "dsi_nand.bin");
+    if (dsi_bios7_path.empty() || dsi_nand_path.empty()) {
+        return "DSi system files (dsi_bios7.bin / dsi_nand.bin) not found.";
+    }
+
+    melonDS::DSiBIOSImage bios7i_data{};
+    if (!ReadFileExact(dsi_bios7_path, bios7i_data)) {
+        return "Failed to read dsi_bios7.bin.";
+    }
+
+    std::vector<uint8_t> romdata = ReadWholeFile(fs::path(rom_path));
+    if (romdata.size() < sizeof(melonDS::NDSHeader)) {
+        return "ROM file is missing or too small to be a valid DS/DSi ROM.";
+    }
+
+    melonDS::NDSHeader header{};
+    std::memcpy(&header, romdata.data(), sizeof(header));
+    if (!header.IsDSi()) {
+        return "This ROM has no DSi-exclusive title data to install.";
+    }
+
+    SHA1_CTX sha_ctx;
+    SHA1Init(&sha_ctx);
+    SHA1Update(&sha_ctx, romdata.data(), static_cast<uint32_t>(romdata.size()));
+    std::array<uint8_t, 20> content_hash{};
+    SHA1Final(content_hash.data(), &sha_ctx);
+
+    const auto put_be32 = [](uint8_t* dst, uint32_t v) {
+        dst[0] = static_cast<uint8_t>(v >> 24);
+        dst[1] = static_cast<uint8_t>(v >> 16);
+        dst[2] = static_cast<uint8_t>(v >> 8);
+        dst[3] = static_cast<uint8_t>(v);
+    };
+
+    // Field choices here deliberately mirror DS-Homebrew/NTM's maketmd.c
+    // (github.com/Epicpkmn11/NTM) byte-for-byte -- a real DSi homebrew
+    // tool that's known to produce TMDs real hardware actually accepts
+    // and displays for titles with no genuine Nintendo-issued TMD, which
+    // is exactly our situation. In particular: NTM leaves SignatureType/
+    // SignatureName/PublicSaveSize/PrivateSaveSize all zero (an earlier
+    // version of this function filled those in, which is one candidate
+    // for why the title imported cleanly at the FAT level but never
+    // appeared on the Menu) and -- the field that stood out most --
+    // fills all 16 AgeRatings bytes with 0x80, not zero.
+    melonDS::DSi_TMD::TitleMetadata tmd{};
+    tmd.GroupId[0] = static_cast<uint8_t>(header.MakerCode[0]);
+    tmd.GroupId[1] = static_cast<uint8_t>(header.MakerCode[1]);
+    std::memset(tmd.AgeRatings, 0x80, sizeof(tmd.AgeRatings));
+
+    put_be32(&tmd.TitleId[0], header.DSiTitleIDHigh);
+    put_be32(&tmd.TitleId[4], header.DSiTitleIDLow);
+
+    tmd.NumberOfContents = 1;
+
+    tmd.Contents.ContentId[0] = tmd.Contents.ContentId[1] = 0;
+    tmd.Contents.ContentId[2] = tmd.Contents.ContentId[3] = 0;
+    tmd.Contents.ContentIndex[0] = tmd.Contents.ContentIndex[1] = 0;
+    tmd.Contents.ContentType[0] = 0x00;
+    tmd.Contents.ContentType[1] = 0x01;
+    for (int i = 0; i < 8; i++) {
+        tmd.Contents.ContentSize[i] =
+            static_cast<uint8_t>(static_cast<uint64_t>(romdata.size()) >> (8 * (7 - i)));
+    }
+    std::memcpy(tmd.Contents.ContentSha1Hash, content_hash.data(), 20);
+
+    auto* nand_file = melonDS::Platform::OpenLocalFile(
+        dsi_nand_path.string(), melonDS::Platform::FileMode::ReadWriteExisting);
+    if (!nand_file) {
+        return "Failed to open dsi_nand.bin for writing.";
+    }
+
+    melonDS::DSi_NAND::NANDImage nand(nand_file, &bios7i_data[0x8308]);
+    if (!nand) {
+        return "dsi_nand.bin could not be read as a valid DSi NAND image.";
+    }
+
+    melonDS::DSi_NAND::NANDMount mount(nand);
+    if (!mount) {
+        return "Failed to mount the DSi NAND's filesystem.";
+    }
+
+    // Re-installing (e.g. after fixing a bug in this installer) should
+    // cleanly replace whatever's already there rather than mixing old
+    // and new content under the same title ID.
+    if (mount.TitleExists(tmd.GetCategory(), tmd.GetID())) {
+        mount.DeleteTitle(tmd.GetCategory(), tmd.GetID());
+    }
+
+    if (!mount.ImportTitle(romdata.data(), romdata.size(), tmd, /*readonly=*/false)) {
+        return "melonDS's NAND importer rejected this title.";
+    }
+
+    return {};
+}
+
 std::string MelonDSCore::SaveDirFor(const std::string& rom_path) const {
     // Azahar's existing save layout: <user_data>/sdmc/... for 3DS.
     // Route DS saves to a sibling directory instead of anywhere under
@@ -942,6 +1073,65 @@ void MelonDSCore::Reset() {
         nds_->SetupDirectBoot(fs::path(loaded_rom_path_).filename().string());
     }
     nds_->Start();
+}
+
+bool MelonDSCore::InsertCart(const std::string& path) {
+    // Only meaningful while sitting at a running system menu with no
+    // cart (see Load()'s boot_to_menu) -- see this method's own doc
+    // comment on EmulationCore for why a cart swap mid-game isn't
+    // supported here.
+    if (!nds_ || !loaded_ || !loaded_rom_path_.empty()) {
+        return false;
+    }
+    if (!fs::exists(path)) {
+        return false;
+    }
+
+    std::vector<uint8_t> romdata = ReadWholeFile(path);
+    if (romdata.empty()) {
+        return false;
+    }
+    auto rombuffer = std::make_unique<melonDS::u8[]>(romdata.size());
+    std::memcpy(rombuffer.get(), romdata.data(), romdata.size());
+
+    // Same homebrew-SDCard setup as Load() -- see its own comment on
+    // why this is skipped for ordinary retail carts.
+    melonDS::NDSCart::NDSCartArgs cart_args{};
+    bool rom_is_homebrew = false;
+    if (romdata.size() >= sizeof(melonDS::NDSHeader)) {
+        melonDS::NDSHeader header{};
+        std::memcpy(&header, romdata.data(), sizeof(header));
+        rom_is_homebrew = header.IsHomebrew();
+    }
+    if (rom_is_homebrew) {
+        const std::string homebrew_sdcard_root = BuildHomebrewSDCardRoot().string();
+        const fs::path nds_sdcard_img = ToRealPath(
+            fs::path(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir)) / "nds_sdcard.img");
+        EnsureSDCardImageIsFresh(nds_sdcard_img, fs::path(homebrew_sdcard_root));
+        cart_args.SDCard = melonDS::FATStorageArgs{
+            nds_sdcard_img.string(),
+            0,
+            false,
+            homebrew_sdcard_root,
+        };
+    }
+
+    auto cart = melonDS::NDSCart::ParseROM(
+        std::move(rombuffer), static_cast<melonDS::u32>(romdata.size()), nullptr,
+        std::move(cart_args));
+    if (!cart) {
+        return false;
+    }
+
+    // Deliberately no Reset()/SetupDirectBoot()/Start() here -- the
+    // console is already running (sitting at the DSi Menu, or whatever
+    // else was already loaded via boot_to_menu), and the whole point is
+    // for its own already-running code to notice and handle the newly-
+    // inserted cart itself, exactly like a real console does when you
+    // insert a cartridge while it's powered on.
+    nds_->SetNDSCart(std::move(cart));
+    loaded_rom_path_ = path;
+    return true;
 }
 
 void MelonDSCore::FlushSave() {

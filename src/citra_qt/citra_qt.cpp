@@ -48,6 +48,15 @@
 #include "citra_qt/ds_forwarder_registry.h"
 #include "citra_qt/ds_player_window.h"
 #include "core/core_factory.h"
+
+namespace MergedCore {
+// Declared (and documented) in core/melonds_core/melon_ds_core.h --
+// forward-declared again here rather than including that header directly,
+// since it drags in melonDS's own NDS.h/Args.h/etc., which citra_qt's
+// build target has no include path for (only citra_core, which actually
+// links melonds_core, does).
+std::string InstallDSiWareTitleToNAND(const std::string& rom_path);
+} // namespace MergedCore
 #include "citra_qt/camera/qt_multimedia_camera.h"
 #include "citra_qt/camera/still_image_camera.h"
 #include "citra_qt/citra_qt.h"
@@ -2321,6 +2330,33 @@ void GMainWindow::ConnectMenuEvents() {
     // Menu, no cart" convention (see its doc comment) -- BootGame routes
     // it to BootDSGame the same as any other .nds/.dsi file would.
     connect_menu(ui->action_Boot_DSi_Menu, [this] { BootGame(QString()); });
+    connect_menu(ui->action_Boot_TWiLightMenu, [this] {
+        // TWiLightMenu++'s own BOOT.NDS is a completely regular DS ROM as
+        // far as MelonDSCore is concerned -- no NAND or DSi Menu involved,
+        // just a normal direct boot -- this is really just "launch this
+        // one specific game" with a friendlier, more discoverable entry
+        // point than picking it out of the game list.
+        // Checked in this order since BOOT.NDS's real, canonical location is
+        // the sdmc top level (matching how installers/guides describe it,
+        // and where Android's own game list looks for it) -- but MelonDSCore
+        // also mirrors sdmc's top level into nds_sdcard_root for its own
+        // virtual SD card (see BuildHomebrewSDCardRoot in melon_ds_core.cpp),
+        // and some existing profiles ended up with it only there.
+        const QString sdmc_dir =
+            QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir));
+        QString boot_nds = sdmc_dir + QStringLiteral("BOOT.NDS");
+        if (!QFileInfo::exists(boot_nds)) {
+            boot_nds = sdmc_dir + QStringLiteral("nds_sdcard_root/BOOT.NDS");
+        }
+        if (QFileInfo::exists(boot_nds)) {
+            BootGame(boot_nds);
+        } else {
+            QMessageBox::warning(
+                this, tr("TWiLightMenu++ Not Found"),
+                tr("TWiLightMenu++ wasn't found on your SD card (looking for BOOT.NDS). "
+                   "Install it first, then try again."));
+        }
+    });
     for (u32 region = 0; region < Core::NUM_SYSTEM_TITLE_REGIONS; region++) {
         connect_menu(ui->menu_Download_System_Files->actions().at(region),
                      [this, region] { OnDownloadSystemFilesMenu(region); });
@@ -2347,6 +2383,40 @@ void GMainWindow::ConnectMenuEvents() {
     connect_menu(ui->action_Ds_Reset_Game, [this] {
         if (ds_player_window) {
             ds_player_window->RequestReset();
+        }
+    });
+    connect_menu(ui->action_Ds_Insert_Cart, [this] {
+        if (!ds_player_window) {
+            return;
+        }
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Insert DS Cart"), QString(), tr("DS/DSi ROMs (*.nds *.dsi)"));
+        if (!path.isEmpty()) {
+            ds_player_window->InsertCart(path);
+        }
+    });
+    connect_menu(ui->action_Ds_Install_Dsiware, [this] {
+        if (ds_player_window) {
+            QMessageBox::warning(
+                this, tr("Install DSiWare to NAND"),
+                tr("Close the current DS session first -- the NAND file can't be written "
+                   "to while a DS/DSi game is running."));
+            return;
+        }
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Install DSiWare to NAND"), QString(), tr("DSiWare ROMs (*.nds *.dsi)"));
+        if (path.isEmpty()) {
+            return;
+        }
+        const std::string error = MergedCore::InstallDSiWareTitleToNAND(path.toStdString());
+        if (error.empty()) {
+            QMessageBox::information(
+                this, tr("Install DSiWare to NAND"),
+                tr("Installed successfully. It should now appear on the DSi Menu and boot "
+                   "correctly from there or from the game list."));
+        } else {
+            QMessageBox::critical(this, tr("Install DSiWare to NAND"),
+                                   QString::fromStdString(error));
         }
     });
     connect_menu(ui->action_Report_Compatibility, []() {

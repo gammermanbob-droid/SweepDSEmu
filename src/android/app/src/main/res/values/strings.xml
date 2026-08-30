@@ -526,6 +526,9 @@
     <string name="emulation_overlay_options">Overlay Options</string>
     <string name="boot_dsi_menu">Boot DSi Menu</string>
     <string name="boot_dsi_menu_description">Boot straight into the DSi system menu, no game inserted -- lets you browse and launch NAND-installed DSiWare titles directly. Requires real DSi system files (see STARTUP_GUIDE.txt).</string>
+    <string name="boot_twilightmenu">Boot TWiLightMenu++</string>
+    <string name="boot_twilightmenu_description">Jump straight into TWiLightMenu++\'s own game list -- the quickest way to reach your full DS/DSi/GBA library without going through the real DSi Menu.</string>
+    <string name="boot_twilightmenu_not_found">TWiLightMenu++ wasn\'t found on your SD card (looking for BOOT.NDS). Install it first, then try again.</string>
     <string name="ds_controls_title">DS Controls</string>
     <string name="ds_reset_game">Reset Game</string>
     <string name="ds_reset_confirm_title">Reset Game?</string>

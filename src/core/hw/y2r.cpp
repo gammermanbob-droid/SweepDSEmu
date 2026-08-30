@@ -111,7 +111,7 @@ static void SendData(Memory::MemorySystem& memory, const u32* input, ConversionB
 
     while (amount_of_data > 0) {
         u8* unit_end = output + buf.transfer_unit;
-        while (output < unit_end) {
+        while (output < unit_end && amount_of_data > 0) {
             u32 color = *input++;
             Common::Vec4<u8> col_vec{(u8)(color >> 24), (u8)(color >> 16), (u8)(color >> 8), alpha};
 
@@ -137,6 +137,7 @@ static void SendData(Memory::MemorySystem& memory, const u32* input, ConversionB
         output += buf.gap;
         buf.address += buf.transfer_unit + buf.gap;
         buf.image_size -= buf.transfer_unit;
+        output = memory.GetPointer(buf.address);
     }
 }
 

@@ -145,6 +145,151 @@ if(EXISTS "${MELONDS_DSI_DSP_CPP}")
     endif()
 endif()
 
+# melonDS's DSi::SetupDirectBoot() leaves an unfixed "TODO properly setup
+# SCFG_EXT" -- the DSi-native (!dsmode) direct-boot branch always writes
+# the same fixed ARM7 SCFG_EXT value regardless of whether the title
+# being booted is a true DSiWare-exclusive title (NDS_Header::UnitCode
+# == 0x02, never a physical cartridge) or a hybrid DS+DSi cartridge
+# (UnitCode == 0x03) -- SetupDirectBoot() has no other way to tell them
+# apart, since both load through the same NDSCartSlot path. That fixed
+# value (0x93FBFB06) has SD/MMC register access (bit 18) cleared,
+# matching GBATek's documented default for a DSi *cartridge* -- but
+# GBATek's documented default for *DSiWare* is 0x13FFFB06, with that
+# bit set, since a real DSiWare title is normally launched by (and
+# inherits the SD/MMC access permissions of) the DSi Menu rather than
+# a cartridge-slot boot. Without it, a direct-booted DSiWare title that
+# touches SD/MMC-backed storage during its own init can hang or fail --
+# exactly what TWiLightMenu++'s chainload and this fork's own "Boot DSi
+# Menu" -> launch-from-menu path both sidestep, since neither one goes
+# through SetupDirectBoot() at all.
+set(MELONDS_DSI_CPP "${melonds_SOURCE_DIR}/src/DSi.cpp")
+if(EXISTS "${MELONDS_DSI_CPP}")
+    file(READ "${MELONDS_DSI_CPP}" MELONDS_DSI_CONTENTS)
+    if(NOT MELONDS_DSI_CONTENTS MATCHES "is_dsiware_exclusive")
+        string(REPLACE
+"    else
+    {
+        SCFG_EXT[0] = 0x8307F100;
+        SCFG_EXT[1] = 0x93FBFB06;
+    }"
+"    else
+    {
+        SCFG_EXT[0] = 0x8307F100;
+        // A pure DSiWare title (UnitCode 0x02, never a hybrid DS+DSi
+        // cartridge) needs SD/MMC register access (bit 18) that the
+        // cartridge-boot default below leaves cleared -- see this
+        // patch's own comment in cmake/melonds.cmake for why.
+        const bool is_dsiware_exclusive = (header.UnitCode == 0x02);
+        SCFG_EXT[1] = is_dsiware_exclusive ? 0x13FFFB06 : 0x93FBFB06;
+    }"
+            MELONDS_DSI_CONTENTS "${MELONDS_DSI_CONTENTS}")
+        file(WRITE "${MELONDS_DSI_CPP}" "${MELONDS_DSI_CONTENTS}")
+    endif()
+endif()
+
+# NDS::ARM7Read8's own top-level dispatch masks the address with
+# 0xFF800000 (9 bits) before switching on it, unlike ARM9Read8's
+# 0xFF000000 (8 bits) -- meaning 0x04FFFA00 (the Emulation ID register,
+# see the ARM7IORead8 patch just below) lands in the *same* switch case
+# as the WiFi registers (0x04800000), whose own sub-range check
+# (addr < 0x04810000) excludes it, so it falls all the way through to
+# the generic "unknown read" path and never reaches ARM7IORead8 at all
+# -- that function's own handling of this register (added below) is
+# correct but dead code without this fix too. Add the same range check
+# directly in this dispatch case, ahead of the WiFi logic.
+set(MELONDS_NDS_CPP_DISPATCH "${melonds_SOURCE_DIR}/src/NDS.cpp")
+if(EXISTS "${MELONDS_NDS_CPP_DISPATCH}")
+    file(READ "${MELONDS_NDS_CPP_DISPATCH}" MELONDS_NDS_DISPATCH_CONTENTS)
+    if(NOT MELONDS_NDS_DISPATCH_CONTENTS MATCHES "0x04800000 dispatch case, ahead of")
+        string(REPLACE
+"    case 0x04800000:
+        if (addr < 0x04810000)
+        {
+            if (!(PowerControl7 & (1<<1))) return 0;
+            if (addr & 0x1) return Wifi.Read(addr-1) >> 8;
+            return Wifi.Read(addr) & 0xFF;
+        }
+        break;"
+"    case 0x04800000:
+        // NO\$GBA debug register \"Emulation ID\" -- see this file's own
+        // ARM7IORead8 for the actual handling; caught here in the
+        // 0x04800000 dispatch case, ahead of the WiFi sub-range check
+        // below, since 0x04FFFA00 falls in *this* case under ARM7Read8's
+        // coarser (9-bit) address mask, not the 0x04000000 case that
+        // routes to ARM7IORead8 for every other I/O register.
+        if (addr >= 0x04FFFA00 && addr < 0x04FFFA10)
+            return NDS::ARM7IORead8(addr);
+        if (addr < 0x04810000)
+        {
+            if (!(PowerControl7 & (1<<1))) return 0;
+            if (addr & 0x1) return Wifi.Read(addr-1) >> 8;
+            return Wifi.Read(addr) & 0xFF;
+        }
+        break;"
+            MELONDS_NDS_DISPATCH_CONTENTS "${MELONDS_NDS_DISPATCH_CONTENTS}")
+        file(WRITE "${MELONDS_NDS_CPP_DISPATCH}" "${MELONDS_NDS_DISPATCH_CONTENTS}")
+    endif()
+endif()
+
+# melonDS's own NDS::ARM9IORead8() implements the "NO$GBA debug register /
+# Emulation ID" at 0x04FFFA00-0x04FFFA0F (returning the ASCII string
+# "melonDS <version>"), a well-known convention several DS/DSi homebrew
+# projects (including TWiLightMenu++/nds-bootstrap) use to detect which
+# emulator (if any) they're running under, so they can work around
+# emulator-specific quirks. NDS::ARM7IORead8() has no equivalent handling
+# at all -- falls through to its generic "unknown register, return 0"
+# path -- even though real DSi/DS hardware and melonDS's own ARM9 side
+# both expose it. Direct-booting TWiLightMenu++'s BOOT.NDS hangs forever
+# on this: its ARM7-side code polls this exact register (busy-looping,
+# confirmed via repeated "unknown ARM7 IO read8 04FFFA00" log spam) and
+# never gets the byte pattern it needs to see to continue past
+# whatever check it's making. Mirror ARM9's own handling here.
+set(MELONDS_NDS_CPP "${melonds_SOURCE_DIR}/src/NDS.cpp")
+if(EXISTS "${MELONDS_NDS_CPP}")
+    file(READ "${MELONDS_NDS_CPP}" MELONDS_NDS_CONTENTS)
+    if(NOT MELONDS_NDS_CONTENTS MATCHES "NO\\$GBA debug register \"Emulation ID\" \\(ARM7\\)")
+        string(REPLACE
+"    case 0x04000300: return PostFlag7;
+    case 0x04000304: return PowerControl7;
+    }
+
+    if (addr >= 0x04000400 && addr < 0x04000520)
+    {
+        return SPU.Read8(addr);
+    }
+
+    if ((addr & 0xFFFFF000) != 0x04004000)
+        Log(LogLevel::Debug, \"unknown ARM7 IO read8 %08X %08X\\n\", addr, ARM7.R[15]);
+    return 0;
+}"
+"    case 0x04000300: return PostFlag7;
+    case 0x04000304: return PowerControl7;
+    }
+
+    if (addr >= 0x04000400 && addr < 0x04000520)
+    {
+        return SPU.Read8(addr);
+    }
+
+    // NO\$GBA debug register \"Emulation ID\" (ARM7) -- mirrors ARM9IORead8's
+    // own handling of the same register (see cmake/melonds.cmake for why
+    // this side was missing it).
+    if (addr >= 0x04FFFA00 && addr < 0x04FFFA10)
+    {
+        static char const emuID[16] = \"melonDS \" MELONDS_VERSION_BASE;
+        auto idx = addr - 0x04FFFA00;
+        return (u8)(emuID[idx]);
+    }
+
+    if ((addr & 0xFFFFF000) != 0x04004000)
+        Log(LogLevel::Debug, \"unknown ARM7 IO read8 %08X %08X\\n\", addr, ARM7.R[15]);
+    return 0;
+}"
+            MELONDS_NDS_CONTENTS "${MELONDS_NDS_CONTENTS}")
+        file(WRITE "${MELONDS_NDS_CPP}" "${MELONDS_NDS_CONTENTS}")
+    endif()
+endif()
+
 # melonDS's fastmem system installs a SIGSEGV/SIGBUS handler
 # (ARMJIT_Memory::SigsegvHandler) that resolves deliberate faults from
 # touching its JIT memory arena. That handler indexes through the

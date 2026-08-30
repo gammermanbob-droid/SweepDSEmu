@@ -100,6 +100,21 @@ public:
     virtual void Reset() = 0;
     virtual void Shutdown() = 0;
 
+    // Inserts a cart into an already-running console, exactly like
+    // swapping a physical cartridge in on real hardware -- as opposed
+    // to Load(), which powers on a fresh console with the cart already
+    // in the slot. Only meaningful for a core that's currently sitting
+    // at a running system menu with no cart (see MelonDSCore's own
+    // "Boot DSi Menu" via Load(path="")): the newly-inserted cart isn't
+    // booted here, it's left for whatever's already running (the real,
+    // Nintendo-authored DSi Menu, or homebrew like TWiLightMenu++) to
+    // detect and launch on its own, same as real hardware -- this is
+    // what lets homebrew that depends on genuine post-firmware-boot
+    // hardware state (e.g. GodMode9i's raw SD/MMC access, unreachable
+    // through DirectBoot's shortcut) actually work. No-op by default;
+    // only MelonDSCore overrides this.
+    virtual bool InsertCart(const std::string& /*path*/) { return false; }
+
     // Persists native cart save data (SRAM/EEPROM/Flash) to disk right
     // now, without shutting down -- otherwise that data only ever hits
     // disk on a clean Shutdown(), which never happens if the process is
