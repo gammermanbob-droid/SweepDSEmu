@@ -172,9 +172,10 @@ class HomeSettingsFragment : Fragment() {
                     // lists it there too; see its own addGamesRecursive doc
                     // comment for why BOOT.NDS specifically is allowed at
                     // the SD root when nothing else loose there is).
-                    var games = GameHelper.cachedGameList
-                    if (games.isEmpty()) {
-                        games = GameHelper.getGames()
+                    val games = if (GameHelper.cachedGameList.isEmpty()) {
+                        GameHelper.getGames()
+                    } else {
+                        GameHelper.cachedGameList
                     }
                     val bootNds = games.firstOrNull { it.filename.equals("BOOT.NDS", ignoreCase = true) }
                     if (bootNds != null) {
