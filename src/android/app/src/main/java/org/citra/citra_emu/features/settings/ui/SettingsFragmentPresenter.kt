@@ -370,7 +370,7 @@ class SettingsFragmentPresenter(private val fragmentView: SettingsFragmentView) 
                 SwitchSetting(
                     BooleanSetting.LLE_APPLETS,
                     R.string.lle_applets,
-                    0,
+                    R.string.lle_applets_description,
                     BooleanSetting.LLE_APPLETS.key,
                     BooleanSetting.LLE_APPLETS.defaultValue
                 )
